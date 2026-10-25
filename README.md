@@ -15,7 +15,7 @@ spec/               协议（已冻结的 v0）
   pack-v0.md        词典包 .zdpack（SQLite）的格式；类型表和主题随包分发，不在这里
 crates/
   zdict-core/       Rust 核心：读包、联想、全文检索、纠错、解码、主题计算
-  zdict-cli/        命令行工具 zdict：suggest/search/show/info，以及基准测试
+  zdict-cli/        命令行工具 zdict：suggest/search/correct/show/render/themes/info，基准测试与纠错评测
 apps/
   desktop/          桌面端（Tauri 2，界面用 TS 跑在 WebView 里）
   android/          Android（Kotlin + Jetpack Compose）
@@ -43,5 +43,5 @@ cargo test               # Rust 核心
 | --- | --- |
 | 协议 v0 | 已冻结 |
 | 词典包格式 v0 | 已定，Oxford 包已按此格式构建（OxDic 仓库） |
-| Rust 核心 | M1 完成：读包、词条、联想、全文检索、资源、链接；命令行工具 `zdict` |
+| Rust 核心 | M2 完成：读包、词条、联想、全文检索、纠错、资源、链接、主题层叠与渲染树；命令行工具 `zdict` |
 | 桌面 / Android | 未开始 |
