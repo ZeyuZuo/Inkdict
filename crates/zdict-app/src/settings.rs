@@ -45,9 +45,16 @@ impl Settings {
     }
 }
 
-/// The pack theme with the settings layer on top.
+/// The desktop app's own theme (themes/desktop.toml): the application
+/// layer between the pack theme and the settings (spec v0 §7.2).
+pub const DESKTOP_THEME: &str = include_str!("../themes/desktop.toml");
+
+/// Pack theme, then the desktop theme, then the settings layer.
 pub(crate) fn stack(base: &Theme, settings: &Settings) -> ThemeStack {
     let mut stack = ThemeStack::new(base.clone());
+    stack.push(
+        Theme::parse("desktop.toml", DESKTOP_THEME).expect("the bundled desktop theme parses"),
+    );
     let overlay =
         Theme::parse("settings", &settings.overlay()).expect("generated overlay is valid TOML");
     stack.push(overlay);

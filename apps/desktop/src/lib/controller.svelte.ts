@@ -2,7 +2,7 @@ import { tick } from 'svelte';
 import { api, apiError } from './api';
 import type { Column, Entry, Focus, Link, PackInfo, Result, Settings } from './types';
 import { QueryRunner, Sequence } from './query';
-import { emptyHistory, loadRecent, remember, saveRecent, travel, visit, type History, type Visit } from './history';
+import { emptyHistory, travel, visit, type History } from './history';
 import { applyTheme, browserStorage, defaults, loadSettings, loadTheme, saveSettings, type ThemeMode } from './storage';
 import { createSamples, record, type Metric } from './perf';
 import { moveSelection, selectedIndex } from './selection';
@@ -26,7 +26,8 @@ export class Dictionary {
   position = $state<EntryPosition>({ kind: 'top' });
   entryStarted = $state(0);
   history = $state<History>(emptyHistory());
-  recent = $state<Visit[]>([]);
+  /** Suggestions are shown under the query while typing, hidden once one is opened. */
+  listOpen = $state(false);
   settings = $state<Settings>({ ...defaults });
   settingsBusy = $state(true);
   theme = $state<ThemeMode>('system');
@@ -39,12 +40,9 @@ export class Dictionary {
   private entries = new Sequence();
   private queryEpoch = 0;
 
-  get canBack() { return this.history.index > 0; }
-  get canForward() { return this.history.index + 1 < this.history.visits.length; }
-  get choices() { return this.text.trim() ? this.rows : this.recent; }
+  get choices() { return this.text.trim() ? this.rows : []; }
 
   async initialize() {
-    this.recent = loadRecent(this.storage);
     this.setTheme(loadTheme(this.storage));
     window.__zdictPerf = this.samples;
     const results = await Promise.allSettled([
@@ -93,6 +91,7 @@ export class Dictionary {
     this.corrected = false;
     this.searching = true;
     this.error = '';
+    this.listOpen = text.trim() !== '';
     const epoch = ++this.queryEpoch;
     try {
       const result = await this.queries.run(text, this.fulltext, this.column);
@@ -115,14 +114,10 @@ export class Dictionary {
   changeColumn(column: Column) { this.column = column; void this.lookup(this.text); }
   select(direction: -1 | 1) { this.selection = moveSelection(this.selection, direction, this.choices.length); }
   async choose(index = selectedIndex(this.selection, this.choices.length)) {
-    if (index < 0) return;
-    if (!this.text.trim()) {
-      const item = this.recent[index];
-      if (item) await this.open(item.key, { kind: 'top' });
-    } else {
-      const item = this.rows[index];
-      if (item) await this.open(item.entry, item.anchor ? { kind: 'anchor', number: item.anchor } : { kind: 'top' });
-    }
+    const item = this.choices[index];
+    if (!item) return;
+    this.listOpen = false;
+    await this.open(item.entry, item.anchor ? { kind: 'anchor', number: item.anchor } : { kind: 'top' });
   }
 
   async open(key: string, focus: Focus = { kind: 'top' }, navigation?: History) {
@@ -138,8 +133,6 @@ export class Dictionary {
       this.current = entry;
       const target = { key: entry.key, headword: entry.headword, focus };
       this.history = navigation ?? visit(this.history, target);
-      this.recent = remember(this.recent, target);
-      saveRecent(this.storage, this.recent);
     } catch (error) {
       if (this.entries.current(token)) this.report(error);
     } finally {

@@ -24,7 +24,8 @@ export class QueryRunner {
       fulltext ? this.api.search(text, 30, column) : Promise.resolve([]),
     ]);
     if (!this.sequence.current(token)) return null;
-    if (fulltext) return { rows: hits, corrected: false, token };
+    // One row per entry: its best hit (hits come ordered by score).
+    if (fulltext) return { rows: hits.filter((hit, i) => hits.findIndex(other => other.entry === hit.entry) === i), corrected: false, token };
     if (suggestions.length || (text.match(/\p{L}/gu)?.length ?? 0) < 3) {
       return { rows: suggestions, corrected: false, token };
     }

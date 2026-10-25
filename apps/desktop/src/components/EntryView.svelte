@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import type { Entry, Link } from '../lib/types';
+  import type { Entry, Link, PackInfo } from '../lib/types';
   import type { EntryPosition } from '../lib/controller.svelte';
   import { AudioPlayer, fallbackImage } from '../lib/media';
-  let { entry, position, started, scale, loading, mock, onfollow, onpaint, onerror, onlookup }: {
-    entry: Entry | null; position: EntryPosition; started: number; scale: number; loading: boolean; mock: boolean;
+  let { entry, pack, position, started, scale, loading, mock, onfollow, onpaint, onerror, onlookup }: {
+    entry: Entry | null; pack: PackInfo | null; position: EntryPosition; started: number; scale: number; loading: boolean; mock: boolean;
     onfollow: (link: Link) => void; onpaint: (started: number) => void;
     onerror: (message: string) => void; onlookup: (text: string) => void;
   } = $props();
@@ -69,19 +69,21 @@
 </script>
 
 <section class="entry-pane" aria-label="词条" aria-busy={loading} bind:this={pane} style={`--entry-font-scale:${scale}`}>
-  {#if loading}<div class="entry-loading" role="status">正在打开…</div>{/if}
   {#if entry}
-    <div class="entry-content"><div class="entry-eyebrow">{entry.headword}{#if entry.homograph !== null}<sup>{entry.homograph}</sup>{/if}<span>词条</span></div>{@html entry.html}
-      {#if mock}<p class="entry-footnote">本词条为界面演示创作，释义、例句与声音均为示例。</p>{/if}
-    </div>
+    <article class="entry-content">{@html entry.html}
+      {#if mock}<p class="entry-footnote">演示数据</p>{/if}
+    </article>
   {:else}
-    <div class="welcome">
-      <span class="welcome-mark" aria-hidden="true">Aa</span>
-      <p class="eyebrow">一个词，一点新发现</p>
-      <h1>从好奇开始。</h1>
-      <p>输入一个词，找到它的意思，<br />也看看它与其他词的联系。</p>
-      {#if mock}<div class="starter-words"><span>试着查查</span>{#each ['moonjar', 'hushleaf', 'fernlight'] as word}<button onclick={() => onlookup(word)}>{word} ↗</button>{/each}</div>{/if}
-      <p class="welcome-tip"><kbd>/</kbd> 聚焦搜索 <span>·</span> <kbd>Ctrl</kbd> + <kbd>L</kbd></p>
+    <div class="title-page">
+      {#if pack}
+        <h1>{pack.title}</h1>
+        <p class="title-count">{pack.entries.toLocaleString('zh-CN')} 个词条</p>
+      {:else}
+        <h1>ZDict</h1>
+        <p class="title-count">还没有打开词典包</p>
+      {/if}
+      <p class="title-hint">输入单词查询，按 Tab 切换全文检索</p>
+      {#if mock}<p class="title-hint">{#each ['moonjar', 'hushleaf', 'fernlight'] as word}<button class="title-word" onclick={() => onlookup(word)}>{word}</button>{/each}</p>{/if}
     </div>
   {/if}
 </section>

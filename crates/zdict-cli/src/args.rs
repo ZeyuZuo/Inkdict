@@ -23,6 +23,12 @@ pub struct Args {
 pub enum Command {
     /// List metadata and embedded file names.
     Info,
+    /// Serve the desktop app's commands over HTTP on localhost, so its UI
+    /// can be developed in a browser with real data (VITE_ZDICT_BRIDGE).
+    Serve {
+        #[arg(long, default_value_t = 1430)]
+        port: u16,
+    },
     /// Suggest forms starting with TEXT.
     Suggest {
         text: String,

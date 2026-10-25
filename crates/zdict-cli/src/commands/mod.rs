@@ -17,6 +17,7 @@ use crate::args::{Command, EvalCommand};
 
 pub fn run(pack: &Pack, command: Command, json: bool, out: &mut impl Write) -> Result<()> {
     match command {
+        Command::Serve { .. } => unreachable!("handled in main before opening the pack"),
         Command::Info => {
             let meta: BTreeMap<_, _> = pack.meta().iter().collect();
             let files = pack.file_names()?;

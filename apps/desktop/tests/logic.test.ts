@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptyHistory, loadRecent, remember, saveRecent, travel, visit, type Visit } from '../src/lib/history';
+import { emptyHistory, travel, visit, type Visit } from '../src/lib/history';
 import { moveSelection, selectedIndex } from '../src/lib/selection';
 import { applyTheme, defaults, keys, loadSettings, loadTheme, saveSettings, type StorageLike } from '../src/lib/storage';
 import { percentile, record, summarize } from '../src/lib/perf';
@@ -27,23 +27,12 @@ describe('history', () => {
     expect(next.visits[next.index].focus).toEqual(focused.focus);
     expect(visit(next, focused)).toBe(next);
   });
-  it('caps history and recent entries at 100 and deduplicates recent keys', () => {
+  it('caps history at 100 visits', () => {
     let history = emptyHistory();
-    let recent: Visit[] = [];
-    for (let i = 0; i < 105; i++) { history = visit(history, target(String(i))); recent = remember(recent, target(String(i))); }
+    for (let i = 0; i < 105; i++) history = visit(history, target(String(i)));
     expect(history.visits).toHaveLength(100);
     expect(history.visits[0].key).toBe('5');
     expect(history.index).toBe(99);
-    recent = remember(recent, target('80'));
-    expect(recent).toHaveLength(100);
-    expect(recent[0].key).toBe('80');
-    const storage = memory();
-    saveRecent(storage, recent);
-    expect(loadRecent(storage)).toEqual(recent);
-  });
-  it('ignores corrupt persisted history', () => {
-    const storage = memory(); storage.setItem(keys.recent, '[null, {"key":3}]');
-    expect(loadRecent(storage)).toEqual([]);
   });
 });
 

@@ -120,3 +120,12 @@ fn follows_links_and_falls_back_to_lookup() {
         serde_json::json!({"kind": "entry", "key": apple, "focus": {"kind": "top"}})
     );
 }
+
+#[test]
+fn desktop_theme_layer_validates_against_the_oxford_registry() {
+    let Some(dictionary) = oxford() else {
+        return;
+    };
+    let problems = dictionary.stack.validate(&dictionary.registry);
+    assert!(problems.is_empty(), "{problems:#?}");
+}

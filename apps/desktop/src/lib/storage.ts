@@ -4,7 +4,7 @@ export interface StorageLike { getItem(key: string): string | null; setItem(key:
 export const defaults: Settings = {
   hide_chinese: false, hide_pronunciation: false, hide_examples: false, font_scale: 1,
 };
-export const keys = { settings: 'zdict.settings', theme: 'zdict.theme', recent: 'zdict.recent' };
+export const keys = { settings: 'zdict.settings', theme: 'zdict.theme' };
 
 export function browserStorage(): StorageLike | undefined {
   try { return window.localStorage; } catch { return undefined; }

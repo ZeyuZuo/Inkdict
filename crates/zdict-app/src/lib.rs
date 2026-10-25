@@ -17,7 +17,7 @@ use zdict_core::{
 use zdict_html::{Markup, entry_html, theme_css};
 
 pub use config::Config;
-pub use settings::Settings;
+pub use settings::{DESKTOP_THEME, Settings};
 
 /// A failed command: `code` is one of `no_pack`, `not_found`, `bad_input`,
 /// `internal`.
