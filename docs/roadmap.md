@@ -59,4 +59,5 @@
 ### M5 协议通用化
 
 - [ ] 接入第二本词典（非英汉），按结果修订为 spec v1
+- [ ] 固定检索键的 Unicode 版本：包的 `meta` 记录构建时的 Unicode 版本（如 `unicode_version`），读取端按它处理。现状：Oxford 包用 Python 的 Unicode 14 表构建，Rust 核心用更新的表；Unicode 14 已分配的字符结果相同，之后新增的字符（如 U+A7CE）在查询里会被保留而查不到（`crates/zdict-core/src/text.rs` 模块说明）
 - [ ] 可选：把打包器移植为 `zdict pack`，数据仓库不再依赖 Python
