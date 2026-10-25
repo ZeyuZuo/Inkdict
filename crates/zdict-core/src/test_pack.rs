@@ -100,6 +100,25 @@ impl TestPack {
         self
     }
 
+    /// A lookup row; `norm` is stored as given.
+    pub fn lookup(
+        &self,
+        norm: &str,
+        rank: i64,
+        entry: i64,
+        anchor: u32,
+        form: &str,
+        kind: &str,
+    ) -> &Self {
+        self.db()
+            .execute(
+                "INSERT INTO lookup VALUES (?, ?, ?, ?, ?, ?)",
+                params![norm, rank, entry, anchor, form, kind],
+            )
+            .unwrap();
+        self
+    }
+
     fn db(&self) -> Connection {
         Connection::open(&self.path).unwrap()
     }

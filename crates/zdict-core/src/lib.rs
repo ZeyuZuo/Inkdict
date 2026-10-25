@@ -5,13 +5,16 @@
 
 mod entry;
 mod error;
+mod lookup;
 mod meta;
 mod node;
 mod pack;
 #[cfg(test)]
 mod test_pack;
+pub mod text;
 
 pub use error::{Error, MetaProblem, Result};
+pub use lookup::Suggestion;
 pub use meta::Meta;
 pub use node::{Attr, Child, Entry, Node};
 pub use pack::Pack;
