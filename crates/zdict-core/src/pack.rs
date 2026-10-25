@@ -2,12 +2,13 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use zstd::dict::DecoderDictionary;
 
 use crate::error::{Error, Result};
+use crate::fuzzy::FuzzyIndex;
 use crate::meta::Meta;
 use crate::resource::{Sources, read_sources};
 use crate::{APPLICATION_ID, FORMAT_VERSION};
@@ -20,6 +21,8 @@ pub struct Pack {
     /// Prepared once: every entry body is compressed with it (spec/pack-v0.md §2.3).
     pub(crate) dictionary: Option<DecoderDictionary<'static>>,
     pub(crate) sources: Sources,
+    /// Spelling-correction index, built on first use.
+    pub(crate) fuzzy: OnceLock<FuzzyIndex>,
 }
 
 impl Pack {
@@ -47,6 +50,7 @@ impl Pack {
             meta,
             dictionary,
             sources,
+            fuzzy: OnceLock::new(),
         })
     }
 

@@ -5,6 +5,7 @@
 
 mod entry;
 mod error;
+mod fuzzy;
 mod link;
 mod lookup;
 mod meta;
@@ -20,6 +21,7 @@ pub mod text;
 pub mod theme;
 
 pub use error::{Error, MetaProblem, Result};
+pub use fuzzy::{Correction, max_distance};
 pub use link::{Focus, Link, LinkTarget, plain};
 pub use lookup::Suggestion;
 pub use meta::Meta;
