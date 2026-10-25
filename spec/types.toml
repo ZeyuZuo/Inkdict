@@ -1,0 +1,446 @@
+# ZDict type registry v0
+#
+# Defines every node type a dictionary entry may contain. Content files
+# store only type + original text + a few attributes; how each type looks
+# is defined by a theme (themes/*.toml). See v0.md.
+#
+# Per type:
+#   kind      "block" or "inline": default layout before any theme applies
+#   children  allowed child types; "#text" = plain string, "@name" = a group below
+#   attrs     attribute types: string | int | bool | res | ref | enum(a|b|c); "?" = optional
+#   roles     app behaviour independent of the theme:
+#               index   text goes into the lookup index
+#               audio   playable (attrs.audio or attrs.res)
+#               image   displayable picture (attrs.res)
+#               link    navigates to attrs.entry / attrs.anchor, or looks up its text
+#               anchor  can be the target of a link (has an id)
+
+[meta]
+format = "zdict-types"
+version = 0
+
+[groups]
+# Inline content allowed inside running text.
+inline = ["#text", "collocation", "gloss", "xword", "mention", "strong", "highlight",
+          "self_ref", "related_form", "ipa", "sup", "sub", "full_form", "alt", "weak",
+          "br", "bullet", "label", "labels", "target", "pron_list", "pattern", "grammar", "use", "scope", "translation"]
+# Items allowed in a head line, in any order the source gives.
+head = ["headword", "homograph", "badge", "pron_list", "pos", "grammar", "labels",
+        "variant", "inflections", "form_index", "use", "scope", "pattern", "conj"]
+
+# ---------- entry skeleton ----------
+
+[types.entry]
+kind = "block"
+doc = "词条根节点；lang 为全词条默认语言"
+children = ["head", "pos_group", "word_family", "box", "note", "xref", "image"]
+roles = ["anchor"]
+
+[types.head]
+kind = "block"
+doc = "词头行：词条、词性分组、义项、习语、派生词都可以有"
+children = ["@head"]
+
+[types.pos_group]
+kind = "block"
+doc = "一个词性下的全部内容"
+children = ["head", "sense", "sense_group", "idiom_list", "phrasal_verb_list",
+            "derivative_list", "xref", "note", "box_ref", "image"]
+roles = ["anchor"]
+
+[types.sense_group]
+kind = "block"
+doc = "带标题的义项分组，如 book 的 PRINTED WORK"
+children = ["sense_group_title", "sense", "xref", "box_ref"]
+
+[types.sense_group_title]
+kind = "block"
+children = ["#text", "translation"]
+
+[types.sense]
+kind = "block"
+doc = "义项；n 为源数据中的义项编号"
+attrs = { n = "int?" }
+children = ["head", "definition", "example", "xref", "image", "note", "box_ref"]
+roles = ["anchor"]
+
+[types.definition]
+kind = "block"
+doc = "释义；不同语言是不同 lang 的同类节点"
+children = ["@inline"]
+
+[types.example]
+kind = "block"
+doc = "例句；wrong 表示错误用法示例"
+attrs = { wrong = "bool?" }
+children = ["pattern", "example_text", "audio", "labels", "note"]
+roles = ["anchor"]
+
+[types.example_text]
+kind = "block"
+doc = "例句文本；原文和译文是不同 lang 的同类节点"
+children = ["@inline"]
+
+# ---------- head items ----------
+
+[types.headword]
+kind = "inline"
+doc = "词头原文，保留音节点 ·；索引时去掉"
+children = ["#text", "weak"]
+roles = ["index"]
+
+[types.homograph]
+kind = "inline"
+doc = "同形词编号"
+children = ["#text"]
+
+[types.badge]
+kind = "inline"
+doc = "等级与词表标记：ox3000、ox5000（牛津核心词表）、cefr A1–C2、exam CET4 等、opal W/O/S；文本为原文标签"
+attrs = { scheme = "enum(ox3000|ox5000|cefr|exam|opal)" }
+children = ["#text"]
+
+[types.pron_list]
+kind = "inline"
+children = ["pron"]
+
+[types.pron]
+kind = "inline"
+doc = "一条发音；region 为规范地区代码，原文地区写在 region 子节点"
+attrs = { region = "string", audio = "res?" }
+children = ["region", "pron_form", "ipa"]
+roles = ["audio"]
+
+[types.region]
+kind = "inline"
+doc = "发音地区原文，如 BrE、NAmE、BrE also"
+children = ["#text"]
+
+[types.pron_form]
+kind = "inline"
+doc = "发音形式，如 strong form、before vowels"
+children = ["#text"]
+
+[types.ipa]
+kind = "inline"
+doc = "音标；也用于正文中的音标片段"
+children = ["#text"]
+
+[types.pos]
+kind = "inline"
+children = ["#text"]
+
+[types.grammar]
+kind = "inline"
+doc = "一组语法码，如 [countable, uncountable]"
+children = ["gram"]
+
+[types.gram]
+kind = "inline"
+children = ["#text"]
+
+[types.labels]
+kind = "inline"
+doc = "一组标签，如 (formal, disapproving)"
+children = ["label", "conj"]
+
+[types.label]
+kind = "inline"
+attrs = { kind = "enum(reg|geo|subj)" }
+children = ["#text", "translation"]
+
+[types.conj]
+kind = "inline"
+doc = "并列连接词，如 or；它两侧的同类节点不再插入 join 分隔符"
+children = ["#text"]
+
+[types.variant]
+kind = "inline"
+doc = "一组变体，如 (also caesarian)、(US cesarean)"
+children = ["variant_note", "variant_form", "labels", "pron_list", "conj", "grammar", "form_index", "inflections", "pos"]
+
+[types.variant_note]
+kind = "inline"
+doc = "变体说明词，如 also"
+children = ["#text"]
+
+[types.variant_form]
+kind = "inline"
+children = ["#text", "alt", "infl_ending", "sub", "sup", "weak"]
+roles = ["index"]
+
+[types.inflections]
+kind = "inline"
+doc = "一组屈折形式，如 (comparative abler, superlative ablest)"
+children = ["inflection", "conj"]
+
+[types.inflection]
+kind = "inline"
+children = ["infl_label", "infl_form", "pron_list", "labels"]
+
+[types.infl_label]
+kind = "inline"
+doc = "如 pl.、comparative、past tense"
+children = ["#text"]
+
+[types.infl_form]
+kind = "inline"
+children = ["#text", "infl_ending"]
+roles = ["index"]
+
+[types.infl_ending]
+kind = "inline"
+doc = "屈折形式中强调的词尾，如 amigos 的 os"
+children = ["#text"]
+
+[types.form_index]
+kind = "inline"
+doc = "供检索的完整词形；原网站不显示"
+children = ["#text"]
+roles = ["index"]
+
+[types.use]
+kind = "inline"
+doc = "用法限定，如 (especially in compounds 尤用于构成复合词)"
+children = ["@inline", "translation"]
+
+[types.scope]
+kind = "inline"
+doc = "适用对象，如 (of a group of people 一群人)"
+children = ["@inline", "translation"]
+
+[types.pattern]
+kind = "inline"
+doc = "句型，如 able to do sth"
+children = ["#text", "alt"]
+
+[types.translation]
+kind = "inline"
+doc = "短文本的译文，用在标签、标题、用法限定中；整句译文用同类节点 + lang"
+children = ["@inline"]
+
+# ---------- idioms, phrasal verbs, derivatives ----------
+
+[types.idiom_list]
+kind = "block"
+children = ["idiom", "xref", "note"]
+
+[types.idiom]
+kind = "block"
+children = ["phrase", "head", "sense", "xref", "note"]
+roles = ["anchor"]
+
+[types.phrasal_verb_list]
+kind = "block"
+children = ["phrasal_verb", "xref", "note"]
+
+[types.phrasal_verb]
+kind = "block"
+children = ["phrase", "head", "sense", "xref", "note"]
+roles = ["anchor"]
+
+[types.phrase]
+kind = "inline"
+doc = "习语或短语动词本体"
+children = ["#text", "alt", "weak", "placeholder"]
+roles = ["index"]
+
+[types.placeholder]
+kind = "inline"
+doc = "短语中的占位成分，如 sb、sth"
+children = ["#text"]
+
+[types.derivative_list]
+kind = "block"
+children = ["derivative"]
+
+[types.derivative]
+kind = "block"
+children = ["head", "sense", "xref", "note"]
+roles = ["anchor"]
+
+# ---------- references, notes, media ----------
+
+[types.xref]
+kind = "block"
+attrs = { kind = "enum(syn|opp|equal|see|compare|more|idiom|note|synonyms|wordfinder|language-bank|word-family|homophones|express|related-noun|form-of|other)" }
+children = ["xref_label", "target"]
+
+[types.xref_label]
+kind = "inline"
+doc = "引用引导语原文，如 see also、SYN"
+children = ["#text"]
+
+[types.target]
+kind = "inline"
+doc = "引用目标；显示文字为源数据的目标词头"
+attrs = { entry = "ref?", anchor = "ref?", anchor_type = "enum(word|position|unbox|wfg)?", hm = "int?", pos = "string?", sense = "string?" }
+children = ["#text", "target_phrase"]
+roles = ["link"]
+
+[types.target_phrase]
+kind = "inline"
+doc = "目标中的短语，如 LAND GRABBER"
+children = ["#text"]
+
+[types.note]
+kind = "block"
+doc = "用法说明"
+attrs = { kind = "enum(help|note|origin)" }
+children = ["paragraph", "example", "xref"]
+
+[types.image]
+kind = "block"
+attrs = { res = "res" }
+roles = ["image"]
+
+[types.audio]
+kind = "inline"
+doc = "例句发音"
+attrs = { region = "string", res = "res" }
+roles = ["audio"]
+
+[types.word_family]
+kind = "block"
+children = ["family_word"]
+
+[types.family_word]
+kind = "inline"
+children = ["family_form", "pos", "family_opp"]
+
+[types.family_form]
+kind = "inline"
+children = ["#text"]
+
+[types.family_opp]
+kind = "inline"
+doc = "反义形式，如 unable"
+children = ["#text"]
+
+# ---------- usage boxes ----------
+
+[types.box]
+kind = "block"
+doc = "说明框：同义词辨析、词语搭配等"
+attrs = { kind = "enum(synonyms|wordfinder|homophones|which-word|collocations|express|grammar|language-bank|vocabulary|british-american|more-about)" }
+children = ["box_title", "heading", "paragraph", "list", "example", "table", "xref"]
+roles = ["anchor"]
+
+[types.box_ref]
+kind = "block"
+doc = "在原位置引用一个说明框"
+attrs = { box = "ref" }
+
+[types.box_kind]
+kind = "inline"
+doc = "说明框类型原文，如 WHICH WORD? 词语辨析"
+children = ["#text", "translation"]
+
+[types.box_title]
+kind = "block"
+doc = "说明框标题行：类型 + 标题"
+children = ["box_kind", "@inline", "translation"]
+
+[types.heading]
+kind = "block"
+attrs = { level = "int" }
+children = ["@inline", "pron_list", "translation"]
+
+[types.paragraph]
+kind = "block"
+children = ["@inline"]
+
+[types.list]
+kind = "block"
+children = ["list_item"]
+
+[types.list_item]
+kind = "block"
+children = ["@inline", "paragraph", "example", "xref", "grammar", "labels", "pos", "note"]
+
+[types.table]
+kind = "block"
+children = ["row"]
+
+[types.row]
+kind = "block"
+children = ["cell"]
+
+[types.cell]
+kind = "inline"
+attrs = { header = "bool?" }
+children = ["@inline", "example"]
+
+# ---------- inline marks ----------
+
+[types.collocation]
+kind = "inline"
+doc = "例句中的搭配"
+children = ["#text"]
+
+[types.gloss]
+kind = "inline"
+doc = "例句或释义中的注释，原文 (= …)"
+children = ["@inline"]
+
+[types.xword]
+kind = "inline"
+doc = "释义中可跳转查询的词"
+children = ["#text"]
+roles = ["link"]
+
+[types.mention]
+kind = "inline"
+doc = "文中提及的词或短语"
+children = ["#text", "translation"]
+
+[types.strong]
+kind = "inline"
+doc = "说明框中的强调词"
+children = ["#text", "translation"]
+
+[types.highlight]
+kind = "inline"
+doc = "说明框例句中的强调短语"
+children = ["#text", "translation"]
+
+[types.self_ref]
+kind = "inline"
+doc = "释义中出现的词头本身"
+children = ["#text"]
+
+[types.related_form]
+kind = "inline"
+doc = "释义中附带的相关词形"
+children = ["#text"]
+
+[types.sup]
+kind = "inline"
+children = ["#text"]
+
+[types.sub]
+kind = "inline"
+children = ["#text"]
+
+[types.full_form]
+kind = "inline"
+doc = "缩略语的全称"
+children = ["#text"]
+
+[types.alt]
+kind = "inline"
+doc = "可替换成分；相邻的 alt 之间由主题插入分隔符"
+children = ["#text"]
+
+[types.weak]
+kind = "inline"
+doc = "弱读部分，如 the lower middle class 中的 the"
+children = ["#text"]
+
+[types.br]
+kind = "inline"
+doc = "强制换行"
+
+[types.bullet]
+kind = "inline"
+doc = "列表符号；符号本身由主题决定"

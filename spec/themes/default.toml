@@ -1,0 +1,671 @@
+# ZDict default theme v0
+#
+# Format: ../v0.md §4. Keys under [style] are selectors:
+#   type                     node type
+#   type[attr=value]         attribute match; lang matches by prefix (zh matches zh-Hans)
+#   type[attr]               attribute present
+#   *                        any type
+#   ancestor type            descendant combinator (space)
+#   parent > type            child combinator
+#   type::before / ::after / ::title / ::marker / ::icon
+#                            the generated text, marker or icon only (text properties)
+# More attribute conditions win, then more type parts, then later rules.
+#
+# Layout follows the Oxford learner's dictionary page: serif English,
+# sans-serif Chinese, navy headword, chip badges, pronunciation pills,
+# hanging ◆ examples with the translation on its own line.
+
+[meta]
+format = "zdict-theme"
+version = 0
+name = "Default"
+
+[fonts]
+text = ["Source Serif 4", "Noto Serif", "Georgia", "Times New Roman", "serif"]
+ui = ["Inter", "Noto Sans", "system-ui", "sans-serif"]
+chip = ["Roboto Condensed", "Arial Narrow", "Inter", "sans-serif"]
+cjk = ["PingFang SC", "Noto Sans SC", "Microsoft YaHei", "sans-serif"]
+phonetic = ["Charis SIL", "Doulos SIL", "Source Serif 4", "Noto Serif", "serif"]
+
+[colors.light]
+fg = "#1b1d21"
+muted = "#666b73"
+faint = "#9aa0a8"
+headword = "#0e2a5e"
+link = "#c8102e"
+accent = "#1f3f8a"
+gb = "#1f3f8a"
+us = "#d0283a"
+key = "#f08a00"
+on_dark = "#ffffff"
+cefr = "#0e2a5e"
+pos_bg = "#0e2a5e"
+exam = "#3b6ea8"
+opal = "#5b6b7d"
+pill = "#eef2fa"
+tag = "#1b1d21"
+tag_fg = "#ffffff"
+box = "#f6f4ee"
+rule = "#e4e2dc"
+wrong = "#b42318"
+clear = "transparent"
+
+[colors.dark]
+fg = "#e7e8ea"
+muted = "#a3a9b2"
+faint = "#6f7680"
+headword = "#a9c3ff"
+link = "#ff7d8c"
+accent = "#93b2ff"
+gb = "#93b2ff"
+us = "#ff7d8c"
+key = "#ffad42"
+on_dark = "#ffffff"
+cefr = "#2f4f93"
+pos_bg = "#2f4f93"
+exam = "#2c5a8c"
+opal = "#4a5868"
+pill = "#232a36"
+tag = "#e7e8ea"
+tag_fg = "#15171a"
+box = "#1e2125"
+rule = "#343a42"
+wrong = "#ff8a80"
+clear = "transparent"
+
+# ---------- base ----------
+
+[style.entry]
+font = "text"
+color = "fg"
+size = 1.06
+
+[style."*[lang=zh]"]
+font = "cjk"
+
+# ---------- entry head line ----------
+
+[style."entry > head"]
+space_after = 1.4
+
+[style.headword]
+weight = "bold"
+color = "headword"
+
+[style."entry > head > headword"]
+size = 2.5
+space_end = 0.35
+
+[style.homograph]
+baseline = "super"
+size = 0.45
+
+[style.badge]
+font = "chip"
+size = 0.8
+line_height = 1.25
+weight = "bold"
+color = "on_dark"
+background = "exam"
+radius = 0.22
+padding = 0.32
+space_end = 0.22
+
+[style."badge[scheme=cefr]"]
+background = "cefr"
+
+[style."badge[scheme=opal]"]
+background = "opal"
+before = "OPAL "
+
+[style."badge[scheme=ox3000]"]
+icon = "key"
+hide_text = true
+background = "key"
+radius = 1
+padding = 0.28
+size = 0.72
+
+[style."entry > head > badge"]
+size = 0.98
+
+[style."entry > head > badge[scheme=ox3000]"]
+size = 1.1
+
+[style."badge[scheme=ox5000]"]
+icon = "key"
+background = "key"
+radius = 0.6
+
+[style."entry > head > pron_list"]
+display = "block"
+space_before = 0.45
+
+[style."entry > head pron"]
+background = "pill"
+radius = 0.45
+padding = 0.6
+space_end = 0.5
+size = 0.92
+
+[style.region]
+style = "italic"
+color = "muted"
+after = " "
+
+[style.ipa]
+font = "phonetic"
+before = "/"
+after = "/"
+
+[style."entry > head ipa"]
+weight = "bold"
+
+[style."pron::icon"]
+color = "gb"
+
+[style."pron[region=US]::icon"]
+color = "us"
+
+[style."pron[region=US] region"]
+color = "muted"
+
+[style.pron]
+join = " "
+
+[style.pos]
+style = "italic"
+color = "muted"
+before = " "
+
+[style.grammar]
+color = "muted"
+before = " ["
+after = "]"
+
+[style.gram]
+join = ", "
+
+[style.labels]
+style = "italic"
+color = "muted"
+before = " ("
+after = ")"
+
+[style.label]
+join = ", "
+
+[style."label translation"]
+style = "normal"
+font = "cjk"
+
+[style.conj]
+before = " "
+after = " "
+
+[style.variant]
+before = " ("
+after = ")"
+
+[style.variant_note]
+style = "italic"
+after = " "
+
+[style.variant_form]
+weight = "bold"
+join = ", "
+
+[style."variant labels"]
+before = ""
+after = " "
+
+[style.inflections]
+before = " ("
+after = ")"
+
+[style.inflection]
+join = ", "
+
+[style.infl_label]
+style = "italic"
+after = " "
+
+[style.infl_form]
+weight = "bold"
+after = " "
+
+[style."inflection pron"]
+join = " "
+
+[style."inflection pron[region=US] region"]
+color = "us"
+
+[style.form_index]
+display = "none"
+
+[style.use]
+before = " ("
+after = ")"
+
+[style.scope]
+before = " ("
+after = ")"
+
+[style.pattern]
+weight = "bold"
+before = " "
+
+[style.translation]
+before = " "
+
+# ---------- part-of-speech groups ----------
+
+[style.pos_group]
+space_before = 1.2
+
+[style."pos_group > head"]
+space_after = 0.5
+
+[style."pos_group > head > grammar"]
+space_start = 0.5
+before = "["
+
+[style."pos_group > head > pos"]
+display = "inline"
+before = ""
+style = "italic"
+weight = "bold"
+color = "on_dark"
+background = "pos_bg"
+size = 1.15
+padding = 0.55
+radius = 0.2
+
+# ---------- senses ----------
+
+[style.sense_group]
+space_before = 1.0
+
+[style.sense_group_title]
+font = "ui"
+size = 0.78
+weight = "bold"
+color = "accent"
+case = "upper"
+divider = "rule"
+space_after = 0.3
+
+[style."sense_group_title translation"]
+font = "cjk"
+weight = "normal"
+color = "muted"
+
+[style.sense]
+space_before = 0.9
+line_height = 1.7
+
+[style."sense[n]"]
+before = "{n}. "
+
+[style."sense::before"]
+weight = "bold"
+
+[style."sense > head"]
+display = "inline"
+
+[style."sense > head > badge"]
+size = 0.72
+space_end = 0.18
+
+[style."sense > head > badge[scheme=ox3000]"]
+background = "clear"
+color = "key"
+padding = 0
+size = 1.0
+
+[style."sense > definition"]
+display = "inline"
+before = " "
+
+[style."sense > definition[lang=zh]"]
+before = " "
+
+# ---------- examples ----------
+
+[style.example]
+display = "block"
+marker = "◆"
+indent = 1.3
+space_before = 0.75
+
+[style."example::marker"]
+size = 0.7
+color = "fg"
+
+[style."example[wrong=true] example_text"]
+decoration = "strike"
+color = "wrong"
+
+[style.example_text]
+display = "inline"
+style = "italic"
+
+[style."example_text[lang=zh]"]
+display = "block"
+style = "normal"
+color = "muted"
+size = 0.9
+space_before = 0.3
+
+[style."example > pattern"]
+before = ""
+after = " "
+
+[style.audio]
+space_start = 0.45
+
+[style."audio::icon"]
+color = "gb"
+
+[style."audio[region=US]::icon"]
+color = "us"
+
+[style.image]
+space_before = 0.8
+max_width = 16
+
+# ---------- inline marks ----------
+
+[style.collocation]
+weight = "bold"
+
+[style.gloss]
+before = "(= "
+after = ")"
+
+[style.xword]
+case = "small-caps"
+
+[style.mention]
+style = "italic"
+
+[style.strong]
+weight = "bold"
+
+[style.highlight]
+weight = "bold"
+style = "italic"
+
+[style.self_ref]
+style = "italic"
+
+[style.related_form]
+weight = "bold"
+
+[style.sup]
+baseline = "super"
+size = 0.7
+
+[style.sub]
+baseline = "sub"
+size = 0.7
+
+[style.full_form]
+before = "‘"
+after = "’"
+
+[style.alt]
+join = "/"
+
+[style.placeholder]
+weight = "normal"
+
+[style.bullet]
+before = "◆ "
+
+[style."bullet::before"]
+size = 0.75
+color = "accent"
+
+# ---------- references ----------
+
+[style.xref]
+space_before = 0.55
+
+[style.xref_label]
+icon = "arrow"
+style = "italic"
+weight = "bold"
+color = "accent"
+after = " "
+
+[style."xref_label::icon"]
+color = "accent"
+size = 1.05
+
+[style."xref[kind=syn] > xref_label"]
+icon = "none"
+font = "ui"
+style = "normal"
+size = 0.62
+color = "tag_fg"
+background = "tag"
+radius = 1
+padding = 0.5
+space_end = 0.35
+after = ""
+
+[style."xref[kind=opp] > xref_label"]
+icon = "none"
+font = "ui"
+style = "normal"
+size = 0.62
+color = "tag_fg"
+background = "tag"
+radius = 1
+padding = 0.5
+space_end = 0.35
+after = ""
+
+[style."xref[kind=equal] > xref_label"]
+icon = "none"
+style = "normal"
+
+[style.target]
+color = "link"
+join = ", "
+
+[style."target[hm]"]
+after = "{hm}"
+
+[style."target::after"]
+baseline = "super"
+size = 0.65
+
+[style.target_phrase]
+before = " "
+
+# ---------- idioms, phrasal verbs, derivatives ----------
+
+[style.idiom_list]
+space_before = 1.6
+title = "Idioms"
+divider = "rule"
+
+[style.phrasal_verb_list]
+space_before = 1.6
+title = "Phrasal Verbs"
+
+[style.derivative_list]
+space_before = 1.4
+title = "Derivatives"
+
+[style."idiom_list::title"]
+font = "ui"
+size = 0.75
+weight = "bold"
+color = "faint"
+case = "upper"
+space_after = 0.3
+
+[style."phrasal_verb_list::title"]
+font = "ui"
+size = 0.75
+weight = "bold"
+color = "faint"
+case = "upper"
+space_after = 0.3
+
+[style."derivative_list::title"]
+font = "ui"
+size = 0.75
+weight = "bold"
+color = "faint"
+case = "upper"
+space_after = 0.3
+
+[style.idiom]
+space_before = 1.0
+
+[style.phrasal_verb]
+space_before = 1.0
+
+[style.derivative]
+space_before = 0.6
+
+[style.phrase]
+weight = "bold"
+join = " | "
+color = "headword"
+size = 1.08
+
+[style."idiom > sense"]
+space_before = 0.3
+
+[style."phrasal_verb > sense"]
+space_before = 0.3
+
+[style."derivative > head > headword"]
+size = 1.15
+
+# ---------- notes, word family ----------
+
+[style.note]
+background = "box"
+padding = 0.8
+radius = 0.5
+space_before = 0.7
+
+[style."note[kind=help]"]
+title = "Help"
+
+[style."note[kind=origin]"]
+title = "Origin"
+
+[style."note[kind=note]"]
+title = "Note"
+
+[style."note::title"]
+font = "ui"
+size = 0.72
+weight = "bold"
+color = "accent"
+case = "upper"
+space_after = 0.3
+
+[style.word_family]
+space_before = 1.6
+background = "box"
+padding = 1.0
+radius = 0.6
+title = "Word Family"
+
+[style."word_family::title"]
+font = "ui"
+size = 0.72
+weight = "bold"
+color = "accent"
+case = "upper"
+space_after = 0.4
+
+[style.family_word]
+display = "block"
+space_before = 0.15
+
+[style.family_form]
+weight = "bold"
+
+[style.family_opp]
+before = " (≠ "
+after = ")"
+color = "muted"
+
+[style."family_opp::before"]
+font = "ui"
+
+# ---------- boxes ----------
+
+[style.box]
+background = "box"
+padding = 1.0
+radius = 0.6
+space_before = 0.9
+
+[style.box_ref]
+collapse = "open"
+
+[style.box_title]
+weight = "bold"
+size = 1.08
+space_after = 0.5
+
+[style.box_kind]
+display = "block"
+font = "ui"
+size = 0.68
+color = "accent"
+case = "upper"
+space_after = 0.2
+
+[style."box_kind translation"]
+font = "cjk"
+weight = "normal"
+
+[style.heading]
+weight = "bold"
+space_before = 0.6
+
+[style."heading[level=3]"]
+font = "ui"
+size = 0.8
+color = "accent"
+case = "upper"
+
+[style.paragraph]
+space_before = 0.5
+
+[style."paragraph[lang=zh]"]
+color = "muted"
+size = 0.92
+space_before = 0.25
+
+[style.list_item]
+marker = "◆"
+indent = 1.3
+space_before = 0.7
+
+[style."list_item > example"]
+marker = ""
+
+[style."list_item::marker"]
+size = 0.7
+color = "accent"
+
+[style.table]
+space_before = 0.6
+
+[style.cell]
+padding = 0.45
+
+[style."cell[header=true]"]
+weight = "bold"
