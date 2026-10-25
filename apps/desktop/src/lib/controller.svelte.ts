@@ -59,6 +59,26 @@ export class Dictionary {
     this.settingsBusy = false;
     // First run: no pack yet, so open the panel where one is chosen.
     if (!this.pack) this.showSettings = true;
+    else void this.warmUp();
+  }
+
+  /** Render one entry off-screen once: WebKit's first entry layout took
+   *  ~300 ms, later ones ~17 ms, so pay that before the first lookup. */
+  private async warmUp() {
+    try {
+      const [first] = await api.suggest('a', 1);
+      if (!first) return;
+      const entry = await api.entry(first.entry);
+      const box = document.createElement('div');
+      box.className = 'entry-pane';
+      box.setAttribute('aria-hidden', 'true');
+      box.style.cssText = 'position:absolute;left:-10000px;top:0;width:46rem;visibility:hidden;pointer-events:none';
+      box.innerHTML = `<div class="entry-content">${entry.html}</div>`;
+      document.body.append(box);
+      void box.offsetHeight;
+      await frame();
+      box.remove();
+    } catch { /* only an optimisation */ }
   }
 
   report(error: unknown) {

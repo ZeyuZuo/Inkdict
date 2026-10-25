@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["crates/zdict-core", "crates/zdict-html", "crates/zdict-app", "crates/zdict-cli"]
+members = ["crates/zdict-core", "crates/zdict-html", "crates/zdict-app", "crates/zdict-cli", "apps/desktop/src-tauri"]
+# The desktop app needs WebKitGTK to build; plain `cargo test` skips it.
+default-members = ["crates/zdict-core", "crates/zdict-html", "crates/zdict-app", "crates/zdict-cli"]
 
 [workspace.package]
 version = "0.1.0"

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { Dictionary } from './lib/controller.svelte';
   import { isTauri } from './lib/api';
+  import { runBench } from './lib/bench';
   import Toolbar from './components/Toolbar.svelte';
   import SearchBox from './components/SearchBox.svelte';
   import ResultList from './components/ResultList.svelte';
@@ -16,7 +17,7 @@
   const empty = $derived(!dictionary.text.trim());
   const selectedId = $derived(dictionary.selection >= 0 ? `result-${dictionary.selection}` : undefined);
 
-  onMount(() => { searchBox.focus(); void dictionary.initialize(); });
+  onMount(() => { searchBox.focus(); void dictionary.initialize().then(() => runBench(dictionary)); });
   function searchKey(event: KeyboardEvent) {
     if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

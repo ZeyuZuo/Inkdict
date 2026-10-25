@@ -1,6 +1,6 @@
 //! Anchors and link targets (spec/pack-v0.md §3.3, spec/v0.md §6).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::node::{Attr, Child, Entry, Node};
@@ -56,13 +56,13 @@ pub enum Focus {
 }
 
 /// What a `link`-role node points at, as written in the content.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Link {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor_type: Option<String>,
     /// The node's text, for the lookup fallback.
     pub text: String,
