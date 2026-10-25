@@ -23,7 +23,7 @@ Tauri 2。查词由 Tauri 的 Rust 部分（`src-tauri/`）直接调用 `zdict-c
 | `set_settings` | `{ settings }` | `Settings`；之后的 `entry` 按新设置渲染 |
 | `theme_css` | — | 字符串：主题的字体与颜色变量（浅色、深色两套）和 `.dx-*` 基础样式 |
 
-`Settings`：`{ hide_chinese: bool, hide_pronunciation: bool, fold_examples: bool, font_scale: number }`。前三项在 Rust 里变成叠加主题（`spec/v0.md` §7.2）；`font_scale` 由界面用 CSS 变量实现。
+`Settings`：`{ hide_chinese: bool, hide_pronunciation: bool, hide_examples: bool, font_scale: number }`。前三项在 Rust 里变成叠加主题（`spec/v0.md` §7.2）；`font_scale` 由界面用 CSS 变量实现。设置和包的路径保存在应用配置目录的 `config.json`。
 
 错误：命令失败时 reject，值为 `{ code, message }`，`code` 为 `no_pack`、`not_found`、`bad_input`、`internal` 之一。
 

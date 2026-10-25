@@ -3,6 +3,9 @@
 //! `oxdic/preview.py` (checked byte for byte); `Markup::App` adds the
 //! attributes the desktop app needs (apps/desktop/README.md).
 
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+
 use zdict_core::theme::Style;
 use zdict_core::{Generated, Icon, RenderChild, RenderNode};
 
@@ -100,9 +103,10 @@ pub(crate) fn css_of(style: &Style, block: bool) -> String {
     rules.join(";")
 }
 
-pub(crate) fn svg(name: &str) -> String {
+/// SVG body of a theme icon, as in preview.py's `ICONS`.
+pub(crate) fn svg_body(name: &str) -> &'static str {
     // Literal SVG bodies from preview.py's ICONS, including attribute order.
-    let body = match name {
+    match name {
         "speaker" => concat!(
             "<path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linejoin=\"round\" ",
             "d=\"M2.2 6h2.6l3.7-3v10L4.8 10H2.2z\"/><path fill=\"none\" stroke=\"currentColor\" ",
@@ -118,160 +122,226 @@ pub(crate) fn svg(name: &str) -> String {
             "stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4.5 8h6.2M8 5.2 10.8 8 8 10.8\"/>"
         ),
         "diamond" => "<path fill=\"currentColor\" d=\"M8 3.5 12.5 8 8 12.5 3.5 8z\"/>",
-        _ => return String::new(),
-    };
+        _ => "",
+    }
+}
+
+pub(crate) fn svg(name: &str) -> String {
+    let body = svg_body(name);
+    if body.is_empty() {
+        return String::new();
+    }
     format!(
         "<svg viewBox=\"0 0 16 16\" width=\"1em\" height=\"1em\" aria-hidden=\"true\" class=\"dx-svg\">{body}</svg>"
     )
 }
 
-fn icon(icon: &Icon, element: &str, extra: &str) -> String {
-    if icon.name.is_empty() || icon.name == "none" {
-        return String::new();
-    }
-    format!(
-        "<{element} class=\"dx-icon\"{extra} style=\"{}\">{}</{element}>",
-        css_of(&icon.style, false),
-        svg(&icon.name)
-    )
+/// Prints one tree. In `App` markup, styles become classes named after a
+/// hash of their CSS, collected into one `<style>` block (inline styles
+/// repeated on every node made the entry `go` 744 KB).
+struct Writer {
+    markup: Markup,
+    classes: RefCell<BTreeMap<String, String>>,
 }
 
-fn pseudo(generated: Option<&Generated>, which: &str, block: bool) -> String {
-    let Some(generated) = generated else {
-        return String::new();
-    };
-    let tag = if block { "div" } else { "span" };
-    format!(
-        "<{tag} class=\"dx-{which}\" style=\"{}\">{}</{tag}>",
-        css_of(&generated.style, block),
-        escape(&generated.text)
-    )
-}
-
-fn child(child: &RenderChild, markup: Markup) -> String {
-    match child {
-        RenderChild::Text(text) => escape(text),
-        RenderChild::Node(node) => html(node, markup),
-    }
-}
-
-fn children(node: &RenderNode, markup: Markup) -> String {
-    node.children
-        .iter()
-        .map(|item| child(item, markup))
-        .collect()
-}
-
-/// HTML of a rendered node and its descendants.
-pub fn html(node: &RenderNode, markup: Markup) -> String {
-    let mut extra = String::new();
-    if let Some(lang) = &node.lang {
-        extra.push_str(&format!(" lang=\"{}\"", escape(lang)));
-    }
-    if let Some(anchor) = &node.anchor {
-        extra.push_str(&format!(" id=\"{}\"", escape(&anchor.id)));
-        if markup == Markup::App {
-            extra.push_str(&format!(" data-anchor=\"{}\"", anchor.number));
+impl Writer {
+    /// ` class="…"{extra} style="…"`, or ` class="… zs…"{extra}` in App markup.
+    fn attrs(&self, class: &str, extra: &str, css: &str) -> String {
+        if self.markup == Markup::Preview {
+            return format!(" class=\"{class}\"{extra} style=\"{css}\"");
         }
-    }
-    let mut css = css_of(&node.style, node.block);
-    if !node.block && node.style.get("background").is_some() {
-        css.push_str(";display:inline-block");
-        if node.style.flag("hide_text") {
-            css.push_str(concat!(
-                ";display:inline-flex;align-items:center;justify-content:center;",
-                "width:1.6em;height:1.6em;padding:0;vertical-align:middle"
-            ));
+        if css.is_empty() {
+            return format!(" class=\"{class}\"{extra}");
         }
+        let mut classes = self.classes.borrow_mut();
+        let name = classes
+            .entry(css.to_owned())
+            .or_insert_with(|| style_class(css))
+            .clone();
+        format!(" class=\"{class} {name}\"{extra}")
     }
-    if node.marker.is_some() {
-        css.push_str(";position:relative");
+
+    fn stylesheet(&self) -> String {
+        let classes = self.classes.borrow();
+        if classes.is_empty() {
+            return String::new();
+        }
+        let rules: String = classes
+            .iter()
+            .map(|(css, name)| format!(".{name}{{{css}}}"))
+            .collect();
+        format!("<style>{rules}</style>")
     }
-    if let Some(collapse) = &node.collapse {
-        let state = if collapse.open { " open" } else { "" };
-        let summary = collapse
-            .summary
-            .as_deref()
-            .map(|summary| child(summary, markup))
-            .unwrap_or_default();
-        return format!(
-            "<details class=\"dx-{}\"{state}{extra} style=\"{css}\"><summary>{summary}</summary>{}</details>",
-            escape(&node.kind),
-            children(node, markup)
-        );
+
+    fn icon(&self, icon: &Icon, element: &str, extra: &str) -> String {
+        if icon.name.is_empty() || icon.name == "none" {
+            return String::new();
+        }
+        let attrs = self.attrs("dx-icon", extra, &css_of(&icon.style, false));
+        format!("<{element}{attrs}>{}</{element}>", self.svg(&icon.name))
     }
-    let mut body = children(node, markup);
-    if let Some(audio) = &node.audio {
-        let url = match markup {
-            Markup::Preview => audio.urls.first().cloned().unwrap_or_default(),
-            Markup::App => audio.urls.join(" "),
+
+    /// Inline SVG for Preview; in App a masked span drawn by `theme_css`
+    /// (one copy per page instead of one per button). The arrow stays
+    /// inline: it is cut out with the page's `--card` color.
+    fn svg(&self, name: &str) -> String {
+        if self.markup == Markup::App && name != "arrow" && !svg_body(name).is_empty() {
+            return format!("<span class=\"dx-svg dx-i-{name}\" aria-hidden=\"true\"></span>");
+        }
+        svg(name)
+    }
+
+    fn pseudo(&self, generated: Option<&Generated>, which: &str, block: bool) -> String {
+        let Some(generated) = generated else {
+            return String::new();
         };
-        let region = audio.region.as_deref().unwrap_or_default();
-        body.push_str(&icon(
-            &audio.icon,
-            "button",
-            &format!(
+        let tag = if block { "div" } else { "span" };
+        let attrs = self.attrs(&format!("dx-{which}"), "", &css_of(&generated.style, block));
+        format!("<{tag}{attrs}>{}</{tag}>", escape(&generated.text))
+    }
+
+    fn child(&self, child: &RenderChild) -> String {
+        match child {
+            RenderChild::Text(text) => escape(text),
+            RenderChild::Node(node) => self.node(node),
+        }
+    }
+
+    fn children(&self, node: &RenderNode) -> String {
+        node.children.iter().map(|item| self.child(item)).collect()
+    }
+
+    fn node(&self, node: &RenderNode) -> String {
+        let markup = self.markup;
+        let mut extra = String::new();
+        if let Some(lang) = &node.lang {
+            extra.push_str(&format!(" lang=\"{}\"", escape(lang)));
+        }
+        if let Some(anchor) = &node.anchor {
+            extra.push_str(&format!(" id=\"{}\"", escape(&anchor.id)));
+            if markup == Markup::App {
+                extra.push_str(&format!(" data-anchor=\"{}\"", anchor.number));
+            }
+        }
+        let mut css = css_of(&node.style, node.block);
+        if !node.block && node.style.get("background").is_some() {
+            css.push_str(";display:inline-block");
+            if node.style.flag("hide_text") {
+                css.push_str(concat!(
+                    ";display:inline-flex;align-items:center;justify-content:center;",
+                    "width:1.6em;height:1.6em;padding:0;vertical-align:middle"
+                ));
+            }
+        }
+        if node.marker.is_some() {
+            css.push_str(";position:relative");
+        }
+        let class = format!("dx-{}", escape(&node.kind));
+        if let Some(collapse) = &node.collapse {
+            let state = if collapse.open { " open" } else { "" };
+            let summary = collapse
+                .summary
+                .as_deref()
+                .map(|summary| self.child(summary))
+                .unwrap_or_default();
+            let attrs = self.attrs(&class, &format!("{state}{extra}"), &css);
+            return format!(
+                "<details{attrs}><summary>{summary}</summary>{}</details>",
+                self.children(node)
+            );
+        }
+        let mut body = self.children(node);
+        if let Some(audio) = &node.audio {
+            let url = match markup {
+                Markup::Preview => audio.urls.first().cloned().unwrap_or_default(),
+                Markup::App => audio.urls.join(" "),
+            };
+            let region = audio.region.as_deref().unwrap_or_default();
+            let extra = format!(
                 " data-audio=\"{}\" title=\"{}\"",
                 escape(&url),
                 escape(region)
-            ),
-        ));
-    }
-    if let Some(image) = &node.image {
-        let url = image.urls.first().map(String::as_str).unwrap_or_default();
-        let fallback = match markup {
-            Markup::App if image.urls.len() > 1 => {
-                format!(" data-fallback=\"{}\"", escape(&image.urls[1..].join(" ")))
-            }
-            _ => String::new(),
-        };
-        body.push_str(&format!(
-            "<img src=\"{}\"{fallback} alt=\"\" loading=\"lazy\" style=\"width:100%\">",
-            escape(url)
-        ));
-    }
-    if let Some(link) = &node.link
-        && markup == Markup::App
-    {
-        let json = serde_json::to_string(link).expect("a link serializes");
-        body = format!(
-            "<a href=\"#\" class=\"dx-link\" data-link=\"{}\">{body}</a>",
-            escape(&json)
-        );
-    } else if let Some(link) = &node.link {
-        let target = link.entry.as_deref().unwrap_or_default();
-        let title = if target.is_empty() { "look up" } else { target };
-        body = format!(
-            "<a href=\"#{}\" class=\"dx-link\" title=\"{}\">{body}</a>",
-            escape(target),
-            escape(title)
-        );
-    }
-    let lead = node
-        .icon
-        .as_ref()
-        .map(|lead| icon(lead, "span", ""))
-        .unwrap_or_default();
-    let before = pseudo(node.before.as_ref(), "before", false);
-    let after = pseudo(node.after.as_ref(), "after", false);
-    let marker = node.marker.as_ref().map_or_else(String::new, |marker| {
-        let mark = marker
+            );
+            body.push_str(&self.icon(&audio.icon, "button", &extra));
+        }
+        if let Some(image) = &node.image {
+            let url = image.urls.first().map(String::as_str).unwrap_or_default();
+            let fallback = match markup {
+                Markup::App if image.urls.len() > 1 => {
+                    format!(" data-fallback=\"{}\"", escape(&image.urls[1..].join(" ")))
+                }
+                _ => String::new(),
+            };
+            body.push_str(&format!(
+                "<img src=\"{}\"{fallback} alt=\"\" loading=\"lazy\" style=\"width:100%\">",
+                escape(url)
+            ));
+        }
+        if let Some(link) = &node.link {
+            body = match markup {
+                Markup::App => {
+                    let json = serde_json::to_string(link).expect("a link serializes");
+                    format!(
+                        "<a href=\"#\" class=\"dx-link\" data-link=\"{}\">{body}</a>",
+                        escape(&json)
+                    )
+                }
+                Markup::Preview => {
+                    let target = link.entry.as_deref().unwrap_or_default();
+                    let title = if target.is_empty() { "look up" } else { target };
+                    format!(
+                        "<a href=\"#{}\" class=\"dx-link\" title=\"{}\">{body}</a>",
+                        escape(target),
+                        escape(title)
+                    )
+                }
+            };
+        }
+        let lead = node
             .icon
-            .as_deref()
-            .map(svg)
-            .unwrap_or_else(|| escape(&marker.text));
-        format!(
-            "<span class=\"dx-marker\" style=\"width:{}em;{}\">{mark}</span>",
-            escape(&marker.width.to_string()),
-            css_of(&marker.style, false)
-        )
+            .as_ref()
+            .map(|lead| self.icon(lead, "span", ""))
+            .unwrap_or_default();
+        let before = self.pseudo(node.before.as_ref(), "before", false);
+        let after = self.pseudo(node.after.as_ref(), "after", false);
+        let marker = node.marker.as_ref().map_or_else(String::new, |marker| {
+            let mark = marker
+                .icon
+                .as_deref()
+                .map(|name| self.svg(name))
+                .unwrap_or_else(|| escape(&marker.text));
+            let css = format!(
+                "width:{}em;{}",
+                escape(&marker.width.to_string()),
+                css_of(&marker.style, false)
+            );
+            format!("<span{}>{mark}</span>", self.attrs("dx-marker", "", &css))
+        });
+        let title = self.pseudo(node.title.as_ref(), "title", true);
+        let tag = if node.block { "div" } else { "span" };
+        let attrs = self.attrs(&class, &extra, &css);
+        format!("<{tag}{attrs}>{title}{marker}{lead}{before}{body}{after}</{tag}>")
+    }
+}
+
+/// `zs` + 32-bit FNV-1a of the CSS: stable across entries, so an entry's
+/// classes never clash with another one's on the same page.
+fn style_class(css: &str) -> String {
+    let hash = css.bytes().fold(0x811c_9dc5_u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193)
     });
-    let title = pseudo(node.title.as_ref(), "title", true);
-    let tag = if node.block { "div" } else { "span" };
-    format!(
-        "<{tag} class=\"dx-{}\"{extra} style=\"{css}\">{title}{marker}{lead}{before}{body}{after}</{tag}>",
-        escape(&node.kind)
-    )
+    format!("zs{hash:08x}")
+}
+
+/// HTML of a rendered node and its descendants; in `App` markup the
+/// entry's `<style>` block comes first.
+pub fn html(node: &RenderNode, markup: Markup) -> String {
+    let writer = Writer {
+        markup,
+        classes: RefCell::new(BTreeMap::new()),
+    };
+    let body = writer.node(node);
+    writer.stylesheet() + &body
 }
 
 #[cfg(test)]
@@ -298,7 +368,7 @@ mod tests {
         let app = html(&word, Markup::App);
         assert_eq!(
             app,
-            "<span class=\"dx-xword\" style=\"\"><a href=\"#\" class=\"dx-link\" data-link=\"{&quot;entry&quot;:&quot;k\\&quot;2&quot;,&quot;text&quot;:&quot;pear&quot;}\">pear</a></span>"
+            "<span class=\"dx-xword\"><a href=\"#\" class=\"dx-link\" data-link=\"{&quot;entry&quot;:&quot;k\\&quot;2&quot;,&quot;text&quot;:&quot;pear&quot;}\">pear</a></span>"
         );
         let mut sense = node("sense", Vec::new());
         sense.anchor = Some(Anchor {
@@ -307,6 +377,19 @@ mod tests {
         });
         assert!(html(&sense, Markup::App).contains(" id=\"s1\" data-anchor=\"3\""));
         assert!(!html(&sense, Markup::Preview).contains("data-anchor"));
+        let mut pron = node("pron", Vec::new());
+        pron.audio = Some(zdict_core::Audio {
+            urls: vec!["a.mp3".into(), "b.mp3".into()],
+            icon: zdict_core::Icon {
+                name: "speaker".into(),
+                style: Style::default(),
+                text_style: Default::default(),
+            },
+            region: Some("GB".into()),
+        });
+        let button = html(&pron, Markup::App);
+        assert!(button.contains("<button class=\"dx-icon\" data-audio=\"a.mp3 b.mp3\" title=\"GB\"><span class=\"dx-svg dx-i-speaker\""), "{button}");
+        assert!(html(&pron, Markup::Preview).contains("<svg viewBox"));
         let mut picture = node("image", Vec::new());
         picture.image = Some(Image {
             urls: vec!["a.jpg".into(), "b.jpg".into()],
@@ -322,6 +405,12 @@ mod tests {
         bad.style.set("weight", Value::Str("bold".into()));
         let html = html(&bad, Markup::App);
         assert!(!html.contains("<script") && !html.contains("<b>") && !html.contains("\" onclick"));
-        assert!(html.contains("style=\"font-weight:700\""), "{html}");
+        let class = style_class("font-weight:700");
+        let sheet = format!("<style>.{class}{{font-weight:700}}</style>");
+        assert!(html.starts_with(&sheet), "{html}");
+        assert!(
+            html.contains(&format!("class=\"dx-x&quot;&gt;&lt;script&gt; {class}\"")),
+            "{html}"
+        );
     }
 }

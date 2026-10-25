@@ -6,6 +6,8 @@ use std::fmt::Write;
 
 use zdict_core::theme::ThemeStack;
 
+use crate::markup::svg_body;
+
 /// Rules for generated parts: icons, markers, folding, links, titles, tables.
 const BASE: &str = r#"button.dx-icon{border:0;background:none;color:inherit;cursor:pointer;padding:0 .12em;font:inherit;line-height:1}
 button.dx-icon:hover{opacity:.7}
@@ -70,7 +72,45 @@ pub fn theme_css(stack: &ThemeStack) -> String {
     )
     .unwrap();
     css.push_str(BASE);
+    css.push_str(&icon_masks());
     css
+}
+
+/// App-markup icons (`.dx-i-<name>`): the SVG as a mask over the text color.
+fn icon_masks() -> String {
+    let mut css = String::from(
+        ".dx-svg[class*=\"dx-i-\"]{display:inline-block;width:1em;height:1em;background:currentColor;\
+         -webkit-mask:var(--dx-icon) center/contain no-repeat;mask:var(--dx-icon) center/contain no-repeat}\n",
+    );
+    for name in ["speaker", "key", "diamond"] {
+        let svg = format!(
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>{}</svg>",
+            svg_body(name).replace('"', "'")
+        );
+        writeln!(
+            css,
+            ".dx-i-{name}{{--dx-icon:url(\"data:image/svg+xml,{}\")}}",
+            data_uri(&svg)
+        )
+        .unwrap();
+    }
+    css
+}
+
+/// Percent-encode what a `data:` URL in CSS cannot carry literally.
+fn data_uri(svg: &str) -> String {
+    let mut encoded = String::with_capacity(svg.len());
+    for ch in svg.chars() {
+        match ch {
+            '#' => encoded.push_str("%23"),
+            '<' => encoded.push_str("%3C"),
+            '>' => encoded.push_str("%3E"),
+            '"' => encoded.push_str("%22"),
+            '%' => encoded.push_str("%25"),
+            _ => encoded.push(ch),
+        }
+    }
+    encoded
 }
 
 fn family_list(families: &[String]) -> String {
@@ -126,5 +166,7 @@ mod tests {
         assert!(css.contains(":root[data-theme=\"dark\"]{--c-fg:rgb(1, 2, 3)}"));
         assert!(!css.contains("body{x"));
         assert!(css.contains("button.dx-icon"));
+        assert!(css.contains(".dx-i-speaker{--dx-icon:url(\"data:image/svg+xml,%3Csvg xmlns="));
+        assert!(!css.contains(".dx-i-arrow"), "the arrow stays inline");
     }
 }
