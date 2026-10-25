@@ -19,5 +19,7 @@ cp -p "$oxdic"/examples/*.json "$oxdic"/examples/resources.toml "$out/examples/"
 # Readable copies of the pack inputs; the pack itself holds the same files.
 rm -rf "$out/pack-inputs" && cp -rp "$oxdic/packs/oalecd10" "$out/pack-inputs"
 (cd "$out" && sha256sum oalecd10.zdpack entries.jsonl > SHA256SUMS)
+# Reference outputs for the Rust core tests, from OxDic's Python reader.
+"${PYTHON:-$oxdic/.venv/bin/python}" "$root/scripts/make-golden.py" "$oxdic"
 echo "synced into $out:"
-ls -l "$out" "$out/examples"
+ls -l "$out" "$out/examples" "$out/golden"

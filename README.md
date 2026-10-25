@@ -22,6 +22,7 @@ apps/
 server/             Web 版的后端（Cloudflare Worker）
 scripts/
   sync-oxdata.sh    从 OxDic 复制已打包的 Oxford 数据到 oxdata/（不入库）
+  make-golden.py    用 OxDic 的 Python 参考读取器生成对照输出 oxdata/golden/
 docs/
   architecture.md   各部分怎么配合，核心如何被各端使用
   roadmap.md        开发阶段与退出条件
@@ -30,7 +31,7 @@ docs/
 ## 开发
 
 ```bash
-scripts/sync-oxdata.sh   # 复制 Oxford 测试数据到 oxdata/（需要本机有 OxDic 仓库）
+scripts/sync-oxdata.sh   # 复制 Oxford 测试数据到 oxdata/ 并生成对照输出（需要本机有 OxDic 仓库及其 .venv）
 cargo test               # Rust 核心
 ```
 
@@ -42,5 +43,5 @@ cargo test               # Rust 核心
 | --- | --- |
 | 协议 v0 | 已冻结 |
 | 词典包格式 v0 | 已定，Oxford 包已按此格式构建（OxDic 仓库） |
-| Rust 核心 | 未开始 |
+| Rust 核心 | M1 进行中：打开包、读 meta 和 files |
 | Web / 桌面 / Android | 未开始 |

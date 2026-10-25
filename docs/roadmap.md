@@ -17,7 +17,7 @@
 
 ### M1 Rust 核心：读包与查词
 
-- [ ] 打开 `.zdpack`，校验标识和版本，读取 meta、类型表、主题、zstd 字典
+- [x] 打开 `.zdpack`，校验标识和版本，读取 meta、类型表、主题、zstd 字典
 - [ ] 按 key 取词条并解析
 - [ ] 联想：`norm` 与 Python 参考实现逐字一致，排序、去重一致
 - [ ] 全文检索：`fts_query` 一致，rowid 解码

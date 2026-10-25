@@ -83,5 +83,6 @@ Python 参考实现（OxDic 仓库的 `oxdic/pack/reader.py`）对一组固定�
 | `oxdata/entries.jsonl` | 全部词条内容（未压缩），渲染树和解码测试 |
 | `oxdata/examples/*.json` | 5 个金样例词条 |
 | `oxdata/*_report.json`、`SHA256SUMS` | 构建报告与校验和 |
+| `oxdata/golden/*.json` | Python 参考读取器的输出（`scripts/make-golden.py`，同步时自动生成），核心的对照测试 |
 
 依赖 `oxdata/` 的测试在目录不存在时跳过，不让没有数据的环境失败。
