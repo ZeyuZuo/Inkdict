@@ -6,3 +6,7 @@ members = ["crates/zdict-core"]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
+
+# The oxdata tests decode all 39,960 entries; unoptimized they take ~18 s.
+[profile.test]
+opt-level = 1

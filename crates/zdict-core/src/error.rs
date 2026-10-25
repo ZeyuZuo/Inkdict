@@ -22,6 +22,14 @@ pub enum Error {
     /// No row with this name in `files`.
     #[error("file not in pack: {0}")]
     MissingFile(String),
+
+    /// No entry with this key (or row id).
+    #[error("entry not in pack: {0}")]
+    MissingEntry(String),
+
+    /// An entry body does not decompress or is not a valid node tree.
+    #[error("entry {key}: {reason}")]
+    BadEntry { key: String, reason: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

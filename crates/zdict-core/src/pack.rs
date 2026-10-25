@@ -17,8 +17,7 @@ pub struct Pack {
     db: Mutex<Connection>,
     meta: Meta,
     /// Prepared once: every entry body is compressed with it (spec/pack-v0.md §2.3).
-    #[allow(dead_code)] // read by entry decoding, M1 step 2
-    dictionary: Option<DecoderDictionary<'static>>,
+    pub(crate) dictionary: Option<DecoderDictionary<'static>>,
 }
 
 impl Pack {
@@ -66,7 +65,7 @@ impl Pack {
         Ok(names)
     }
 
-    fn db(&self) -> MutexGuard<'_, Connection> {
+    pub(crate) fn db(&self) -> MutexGuard<'_, Connection> {
         // A panic while querying leaves a read-only connection usable.
         self.db
             .lock()
@@ -116,60 +115,19 @@ fn read_file(db: &Connection, name: &str) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
     use crate::error::MetaProblem;
+    use crate::test_pack::{META, TestPack};
 
-    const META: [(&str, &str); 8] = [
-        ("format", "zdict-pack"),
-        ("format_version", "0"),
-        ("compression", "zstd"),
-        ("fts_langs", r#"["en", "zh-Hans"]"#),
-        ("id", "test"),
-        ("title", "Test"),
-        ("source_lang", "en"),
-        ("target_lang", "zh-Hans"),
-    ];
-
-    /// A pack with the v0 tables, `meta` rows, `files` rows and PRAGMAs as given.
-    fn build(
-        dir: &tempfile::TempDir,
-        application_id: u32,
-        version: u32,
-        meta: &[(&str, &str)],
-        files: &[(&str, &[u8])],
-    ) -> std::path::PathBuf {
-        let path = dir.path().join("test.zdpack");
-        let db = Connection::open(&path).unwrap();
-        db.execute_batch(&format!(
-            "PRAGMA application_id = {}; PRAGMA user_version = {version};
-             CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
-             CREATE TABLE files(name TEXT PRIMARY KEY, body BLOB NOT NULL) WITHOUT ROWID;",
-            application_id as i32
-        ))
-        .unwrap();
-        for (key, value) in meta {
-            db.execute("INSERT INTO meta VALUES (?, ?)", [key, value])
-                .unwrap();
-        }
-        for (name, body) in files {
-            db.execute(
-                "INSERT INTO files VALUES (?, ?)",
-                rusqlite::params![name, body],
-            )
-            .unwrap();
-        }
-        path
+    fn with_meta(extra: (&str, &str)) -> TestPack {
+        let mut meta = META.to_vec();
+        meta.push(extra);
+        TestPack::with(APPLICATION_ID, FORMAT_VERSION, &meta)
     }
 
     #[test]
     fn opens_a_pack_without_dictionary() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = build(
-            &dir,
-            APPLICATION_ID,
-            FORMAT_VERSION,
-            &META,
-            &[("types.toml", b"[meta]")],
-        );
-        let pack = Pack::open(path).unwrap();
+        let test = TestPack::new();
+        test.file("types.toml", b"[meta]");
+        let pack = test.open();
         assert_eq!(pack.meta().id(), "test");
         assert_eq!(pack.meta().fts_langs(), ["en", "zh-Hans"]);
         assert_eq!(pack.meta().zstd_dict(), None);
@@ -183,34 +141,21 @@ mod tests {
 
     #[test]
     fn loads_the_named_dictionary() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut meta = META.to_vec();
-        meta.push(("zstd_dict", "zstd.dict"));
-        let path = build(
-            &dir,
-            APPLICATION_ID,
-            FORMAT_VERSION,
-            &meta,
-            &[("zstd.dict", b"dictionary")],
-        );
-        assert!(Pack::open(path).unwrap().dictionary.is_some());
+        let test = with_meta(("zstd_dict", "zstd.dict"));
+        test.file("zstd.dict", b"dictionary");
+        assert!(test.open().dictionary.is_some());
     }
 
     #[test]
     fn empty_dictionary_name_means_none() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut meta = META.to_vec();
-        meta.push(("zstd_dict", ""));
-        let path = build(&dir, APPLICATION_ID, FORMAT_VERSION, &meta, &[]);
-        assert!(Pack::open(path).unwrap().dictionary.is_none());
+        assert!(with_meta(("zstd_dict", "")).open().dictionary.is_none());
     }
 
     #[test]
     fn opens_paths_with_uri_characters() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = build(&dir, APPLICATION_ID, FORMAT_VERSION, &META, &[]);
-        let odd = dir.path().join("a b?#%20.zdpack");
-        std::fs::rename(&path, &odd).unwrap();
+        let test = TestPack::new();
+        let odd = test.dir().join("a b?#%20.zdpack");
+        std::fs::rename(test.path(), &odd).unwrap();
         assert_eq!(Pack::open(odd).unwrap().meta().id(), "test");
     }
 
@@ -218,16 +163,12 @@ mod tests {
     #[test]
     fn opens_a_wal_pack_in_a_read_only_directory() {
         use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let path = build(&dir, APPLICATION_ID, FORMAT_VERSION, &META, &[]);
-        Connection::open(&path)
-            .unwrap()
-            .execute_batch("PRAGMA journal_mode = WAL")
-            .unwrap();
-        let read_only = std::fs::Permissions::from_mode(0o555);
-        std::fs::set_permissions(dir.path(), read_only).unwrap();
-        let opened = Pack::open(&path);
-        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let test = TestPack::new();
+        test.sql("PRAGMA journal_mode = WAL");
+        let mode = |bits| std::fs::Permissions::from_mode(bits);
+        std::fs::set_permissions(test.dir(), mode(0o555)).unwrap();
+        let opened = Pack::open(test.path());
+        std::fs::set_permissions(test.dir(), mode(0o755)).unwrap();
         assert_eq!(opened.unwrap().meta().id(), "test");
     }
 
@@ -239,17 +180,15 @@ mod tests {
 
     #[test]
     fn rejects_other_sqlite_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = build(&dir, 0, FORMAT_VERSION, &META, &[]);
-        assert!(matches!(Pack::open(path), Err(Error::NotAPack(0))));
+        let test = TestPack::with(0, FORMAT_VERSION, &META);
+        assert!(matches!(Pack::open(test.path()), Err(Error::NotAPack(0))));
     }
 
     #[test]
     fn rejects_other_format_versions() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = build(&dir, APPLICATION_ID, 1, &META, &[]);
+        let test = TestPack::with(APPLICATION_ID, 1, &META);
         assert!(matches!(
-            Pack::open(path),
+            Pack::open(test.path()),
             Err(Error::UnsupportedVersion(1))
         ));
     }
@@ -276,8 +215,8 @@ mod tests {
         for (key, value) in cases {
             let mut meta: Vec<_> = META.iter().copied().filter(|(k, _)| *k != key).collect();
             meta.extend(value.map(|value| (key, value)));
-            let dir = tempfile::tempdir().unwrap();
-            match Pack::open(build(&dir, APPLICATION_ID, FORMAT_VERSION, &meta, &[])) {
+            let test = TestPack::with(APPLICATION_ID, FORMAT_VERSION, &meta);
+            match Pack::open(test.path()) {
                 Err(Error::Meta {
                     key: found,
                     problem,
@@ -296,10 +235,9 @@ mod tests {
 
     #[test]
     fn rejects_a_missing_dictionary() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut meta = META.to_vec();
-        meta.push(("zstd_dict", "zstd.dict"));
-        let path = build(&dir, APPLICATION_ID, FORMAT_VERSION, &meta, &[]);
-        assert!(matches!(Pack::open(path), Err(Error::MissingFile(name)) if name == "zstd.dict"));
+        let test = with_meta(("zstd_dict", "zstd.dict"));
+        assert!(
+            matches!(Pack::open(test.path()), Err(Error::MissingFile(name)) if name == "zstd.dict")
+        );
     }
 }

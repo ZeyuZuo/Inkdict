@@ -3,12 +3,17 @@
 //! Every app embeds this crate: Android through UniFFI, the desktop app
 //! through Tauri, the web app and server through WebAssembly.
 
+mod entry;
 mod error;
 mod meta;
+mod node;
 mod pack;
+#[cfg(test)]
+mod test_pack;
 
 pub use error::{Error, MetaProblem, Result};
 pub use meta::Meta;
+pub use node::{Attr, Child, Entry, Node};
 pub use pack::Pack;
 
 /// `PRAGMA application_id` of a pack: ASCII `ZDPK`.

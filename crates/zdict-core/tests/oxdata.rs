@@ -74,3 +74,27 @@ fn files_match_reference() {
         assert_eq!(digest, expected["sha256"].as_str().unwrap(), "{name}");
     }
 }
+
+/// Every entry decodes to its line in entries.jsonl, byte for byte, and its
+/// node tree serializes back to the same JSON value.
+#[test]
+fn every_entry_matches_its_source_line() {
+    let jsonl = oxdata().join("entries.jsonl");
+    let Some((pack, golden)) = load("pack.json") else {
+        return;
+    };
+    let source = std::fs::read_to_string(jsonl).unwrap();
+    let mut count = 0;
+    for (number, line) in source.lines().enumerate() {
+        let value: Value = serde_json::from_str(line).unwrap();
+        let key = value["id"].as_str().unwrap();
+        assert_eq!(pack.entry_json(key).unwrap(), line, "{key}");
+        let entry = pack.entry(key).unwrap();
+        assert_eq!(entry.id, number as i64 + 1, "{key}");
+        assert_eq!(serde_json::to_value(&entry.root).unwrap(), value, "{key}");
+        count += 1;
+    }
+    assert_eq!(Some(count), golden["entry_rows"].as_u64());
+    let last = pack.entry_by_id(count as i64).unwrap();
+    assert_eq!(pack.entry(&last.key).unwrap(), last);
+}
