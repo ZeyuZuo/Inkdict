@@ -4,6 +4,13 @@
 //! computed here must equal the one stored there. Python's `str.isspace`,
 //! `str.isalnum` and `re` `\w` are reproduced by the `is_*` functions;
 //! oxdata/golden/chars.json checks them over every code point.
+//!
+//! Unicode versions: the Oxford pack was built with Python's Unicode 14
+//! tables; this crate uses newer ones (normalization 18, case folding 16,
+//! categories 17). Stability policies keep results equal for characters
+//! assigned by Unicode 14. A character assigned later (e.g. U+A7CE) is a
+//! letter here but unassigned to Python 14, so a query containing it keeps
+//! it in the key and cannot match; packs never contain such keys.
 
 use unicode_normalization::UnicodeNormalization;
 use unicode_normalization::char::canonical_combining_class;
