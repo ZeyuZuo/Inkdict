@@ -127,14 +127,15 @@ fn pseudo(generated: Option<&Generated>, which: &str, block: bool) -> String {
     )
 }
 
+fn child(child: &RenderChild) -> String {
+    match child {
+        RenderChild::Text(text) => escape(text),
+        RenderChild::Node(node) => html(node),
+    }
+}
+
 fn children(node: &RenderNode) -> String {
-    node.children
-        .iter()
-        .map(|child| match child {
-            RenderChild::Text(text) => escape(text),
-            RenderChild::Node(node) => html(node),
-        })
-        .collect()
+    node.children.iter().map(child).collect()
 }
 
 pub fn html(node: &RenderNode) -> String {
@@ -161,7 +162,7 @@ pub fn html(node: &RenderNode) -> String {
     }
     if let Some(collapse) = &node.collapse {
         let state = if collapse.open { " open" } else { "" };
-        let summary = collapse.summary.as_deref().map(html).unwrap_or_default();
+        let summary = collapse.summary.as_deref().map(child).unwrap_or_default();
         return format!(
             "<details class=\"dx-{}\"{state}{extra} style=\"{css}\"><summary>{summary}</summary>{}</details>",
             node.kind,

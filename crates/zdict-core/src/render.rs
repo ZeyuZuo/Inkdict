@@ -4,6 +4,7 @@
 //! here. Behaviour follows OxDic's reference renderer `oxdic/preview.py`;
 //! the oxdata tests check that its HTML is reproduced byte for byte.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
@@ -116,7 +117,7 @@ pub struct Image {
 pub struct Collapse {
     pub open: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub summary: Option<Box<RenderNode>>,
+    pub summary: Option<Box<RenderChild>>,
 }
 
 /// Inherited text properties (spec v0 §4.2); `size` is relative to the root.
@@ -192,6 +193,8 @@ struct Context<'e> {
     boxes: HashMap<&'e str, &'e Node>,
     referenced: HashSet<&'e str>,
     anchors: HashMap<&'e str, u32>,
+    /// Boxes being expanded, so a box that references itself stops.
+    expanding: RefCell<Vec<&'e str>>,
 }
 
 type Path<'e> = Vec<(Frame<'e>, TextStyle)>;
@@ -224,9 +227,10 @@ impl<'a> Renderer<'a> {
             boxes,
             referenced,
             anchors,
+            expanding: RefCell::new(Vec::new()),
         };
         self.node(&context, root, &Vec::new(), None)
-            .expect("an entry root is never a box_ref")
+            .expect("the root is never hidden and never a box_ref")
     }
 
     fn frame<'e>(&self, node: &'e Node, path: &Path<'e>) -> Frame<'e> {
@@ -251,16 +255,23 @@ impl<'a> Renderer<'a> {
         path: &Path<'e>,
         collapse: Option<String>,
     ) -> Option<RenderNode> {
-        if node.kind == "box_ref" {
+        // A box_ref shows its box in place (spec v0 §4.3), unless the
+        // registry does not know box_ref: then it is an unknown type.
+        if node.kind == "box_ref" && self.registry.contains("box_ref") {
             let target = node.attr("box").and_then(Attr::as_str)?;
             let mut ref_path = path.clone();
             ref_path.push((self.frame(node, path), TextStyle::default()));
-            let collapse = self
-                .style(&ref_path, None)
-                .str("collapse")
-                .map(String::from);
-            return self.node(cx, cx.boxes.get(target)?, path, collapse);
+            let ref_style = self.style(&ref_path, None);
+            if ref_style.str("display") == Some("none") || cx.expanding.borrow().contains(&target) {
+                return None;
+            }
+            let collapse = ref_style.str("collapse").map(String::from);
+            cx.expanding.borrow_mut().push(target);
+            let shown = self.node(cx, cx.boxes.get(target)?, path, collapse);
+            cx.expanding.borrow_mut().pop();
+            return shown;
         }
+        let is_root = path.is_empty();
         let parent_text = path
             .last()
             .map(|(_, text)| text.clone())
@@ -268,6 +279,9 @@ impl<'a> Renderer<'a> {
         let mut path = path.clone();
         path.push((self.frame(node, &path), TextStyle::default()));
         let style = self.style(&path, None);
+        if !is_root && style.str("display") == Some("none") {
+            return None;
+        }
         let text = parent_text.inherit(&style);
         path.last_mut().expect("just pushed").1 = text.clone();
         let block = match style.str("display") {
@@ -304,10 +318,16 @@ impl<'a> Renderer<'a> {
         }
         let collapse = collapse.or_else(|| style.str("collapse").map(String::from));
         if let Some(state) = collapse.filter(|state| state != "none") {
-            let summary = node
-                .child_nodes()
-                .next()
-                .and_then(|first| self.node(cx, first, &path, None));
+            // The first child, string or node, stays visible (spec v0 §4.2).
+            let summary = match (&node.text, node.children.first()) {
+                (Some(text), _) | (None, Some(Child::Text(text))) => {
+                    Some(RenderChild::Text(text.clone()))
+                }
+                (None, Some(Child::Node(first))) => self
+                    .node(cx, first, &path, None)
+                    .map(|first| RenderChild::Node(Box::new(first))),
+                (None, None) => None,
+            };
             let rest = node.children.get(1..).unwrap_or_default();
             rendered.children = self.children(cx, rest, &path);
             rendered.collapse = Some(Collapse {
@@ -403,20 +423,23 @@ impl<'a> Renderer<'a> {
             {
                 continue;
             }
-            let mut child_path = path.clone();
-            child_path.push((self.frame(node, path), TextStyle::default()));
-            let style = self.style(&child_path, None);
-            if style.str("display") == Some("none") {
+            // Hidden nodes and boxes that cannot be shown leave no trace:
+            // no join, and the sibling before them stays the previous one.
+            let Some(shown) = self.node(cx, node, path, None) else {
                 continue;
+            };
+            if previous == Some(node.kind.as_str()) {
+                let mut child_path = path.clone();
+                child_path.push((self.frame(node, path), TextStyle::default()));
+                if let Some(join) = self
+                    .style(&child_path, None)
+                    .str("join")
+                    .filter(|join| !join.is_empty())
+                {
+                    rendered.push(RenderChild::Text(join.to_owned()));
+                }
             }
-            if previous == Some(node.kind.as_str())
-                && let Some(join) = style.str("join").filter(|join| !join.is_empty())
-            {
-                rendered.push(RenderChild::Text(join.to_owned()));
-            }
-            if let Some(node) = self.node(cx, node, path, None) {
-                rendered.push(RenderChild::Node(Box::new(node)));
-            }
+            rendered.push(RenderChild::Node(Box::new(shown)));
             previous = Some(&node.kind);
         }
         rendered
@@ -605,10 +628,12 @@ collapse = "open"
         assert_eq!(shown.kind, "box");
         let collapse = shown.collapse.as_ref().unwrap();
         assert!(collapse.open);
-        assert_eq!(
-            collapse.summary.as_ref().unwrap().children,
-            [RenderChild::Text("title".into())]
-        );
+        match collapse.summary.as_deref() {
+            Some(RenderChild::Node(summary)) => {
+                assert_eq!(summary.children, [RenderChild::Text("title".into())])
+            }
+            other => panic!("summary {other:?}"),
+        }
         assert_eq!(shown.children.len(), 1);
     }
 
@@ -629,6 +654,71 @@ collapse = "open"
             "Chinese definition and its join are gone"
         );
         assert_eq!(node(&sense.children[0]).text.size, 1.25 * 2.0);
+    }
+
+    /// Hostile or unusual content the reference renderer never meets.
+    fn render_entry(theme: &str, entry: &str) -> RenderNode {
+        let test = TestPack::new();
+        test.file("types.toml", TYPES.as_bytes())
+            .file(
+                "themes/default.toml",
+                format!("[meta]\nformat = \"zdict-theme\"\n{theme}").as_bytes(),
+            )
+            .entry(1, "x", None, entry);
+        let pack = test.open();
+        let registry = pack.registry().unwrap();
+        let stack = ThemeStack::new(pack.theme("default").unwrap());
+        pack.renderer(&registry, &stack)
+            .render(&pack.entry("e").unwrap())
+    }
+
+    #[test]
+    fn stops_at_boxes_that_reference_themselves() {
+        let entry = r#"{"type":"entry","id":"e","children":[{"type":"box_ref","attrs":{"box":"b"}},{"type":"box","id":"b","children":[{"type":"definition","text":"in"},{"type":"box_ref","attrs":{"box":"b"}}]}]}"#;
+        let root = render_entry("", entry);
+        let shown = node(&root.children[0]);
+        assert_eq!((shown.kind.as_str(), shown.children.len()), ("box", 1));
+    }
+
+    #[test]
+    fn hidden_nodes_leave_no_summary_box_or_join() {
+        let theme = "[style.definition]\njoin = \" / \"\n[style.box]\ncollapse = \"closed\"\n\
+                     [style.\"*[lang=zh]\"]\ndisplay = \"none\"\n[style.\"box_ref[box=gone]\"]\ndisplay = \"inline\"\n";
+        let entry = r#"{"type":"entry","id":"e","children":[{"type":"box_ref","attrs":{"box":"b"}},{"type":"sense","id":"s","children":[{"type":"definition","text":"a"},{"type":"definition","lang":"zh","text":"甲"},{"type":"definition","text":"b"}]},{"type":"box","id":"b","children":[{"type":"definition","lang":"zh","text":"标题"},"tail"]}]}"#;
+        let root = render_entry(theme, entry);
+        let shown = node(&root.children[0]);
+        assert!(shown.collapse.as_ref().unwrap().summary.is_none());
+        assert_eq!(shown.children, [RenderChild::Text("tail".into())]);
+        let sense = node(&root.children[1]);
+        let texts: Vec<_> = sense
+            .children
+            .iter()
+            .map(|c| match c {
+                RenderChild::Text(text) => text.clone(),
+                RenderChild::Node(n) => format!("<{}>", n.kind),
+            })
+            .collect();
+        assert_eq!(texts, ["<definition>", " / ", "<definition>"]);
+    }
+
+    #[test]
+    fn collapses_text_and_string_first_children_without_losing_them() {
+        let theme = "[style.definition]\ncollapse = \"open\"\n";
+        let entry = r#"{"type":"entry","id":"e","children":[{"type":"sense","id":"s","children":[{"type":"definition","text":"kept"}]}]}"#;
+        let definition = node(&node(&render_entry(theme, entry).children[0]).children[0]).clone();
+        let collapse = definition.collapse.unwrap();
+        assert_eq!(
+            collapse.summary.as_deref(),
+            Some(&RenderChild::Text("kept".into()))
+        );
+        assert!(definition.children.is_empty());
+    }
+
+    #[test]
+    fn missing_box_targets_leave_no_join() {
+        let theme = "[style.box_ref]\njoin = \" / \"\n";
+        let entry = r#"{"type":"entry","id":"e","children":[{"type":"box_ref","attrs":{"box":"x"}},{"type":"box_ref","attrs":{"box":"y"}}]}"#;
+        assert!(render_entry(theme, entry).children.is_empty());
     }
 
     #[test]

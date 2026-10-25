@@ -114,20 +114,33 @@ impl Selector {
 
     /// Whether the selector matches the last frame of `path` (root first).
     pub fn matches(&self, path: &[Frame]) -> bool {
-        !path.is_empty() && self.match_from(self.parts.len() - 1, path.len() - 1, path)
-    }
-
-    fn match_from(&self, part: usize, frame: usize, path: &[Frame]) -> bool {
-        if !self.parts[part].matches(&path[frame]) {
+        let Some(last) = path.last() else {
+            return false;
+        };
+        if !self.parts[self.parts.len() - 1].matches(last) {
             return false;
         }
-        if part == 0 {
-            return true;
+        // matched[f]: parts 0..=p match with part p on frame f. One row per
+        // part keeps descendant matching linear in the path length (a
+        // backtracking search is exponential on hostile selectors).
+        let mut matched: Vec<bool> = path
+            .iter()
+            .map(|frame| self.parts[0].matches(frame))
+            .collect();
+        for part in 1..self.parts.len() {
+            let mut next = vec![false; path.len()];
+            let mut any_before = false;
+            for frame in 0..path.len() {
+                let parent_ok = match self.combinators[part - 1] {
+                    Combinator::Child => frame > 0 && matched[frame - 1],
+                    Combinator::Descendant => any_before,
+                };
+                next[frame] = parent_ok && self.parts[part].matches(&path[frame]);
+                any_before |= matched[frame];
+            }
+            matched = next;
         }
-        match self.combinators[part - 1] {
-            Combinator::Child => frame > 0 && self.match_from(part - 1, frame - 1, path),
-            Combinator::Descendant => (0..frame).rev().any(|i| self.match_from(part - 1, i, path)),
-        }
+        matched[path.len() - 1]
     }
 }
 
@@ -267,6 +280,14 @@ mod tests {
         for text in no {
             assert!(!Selector::parse(text).unwrap().matches(&path), "{text}");
         }
+        let deep: Vec<_> = (0..40).map(|_| frame("gloss", &none, None)).collect();
+        let hostile = format!("head{}", " *".repeat(13));
+        let started = std::time::Instant::now();
+        assert!(!Selector::parse(&hostile).unwrap().matches(&deep));
+        assert!(
+            started.elapsed().as_millis() < 50,
+            "descendant matching must not backtrack"
+        );
         let example = [frame("example", &flag, None)];
         assert!(
             Selector::parse("example[wrong=true]")

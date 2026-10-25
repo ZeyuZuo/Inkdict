@@ -1,8 +1,8 @@
 //! Checking a theme against a registry: OxDic `protocol.py` `Theme.validate`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use super::{Pseudo, Theme, Value};
+use super::{Pseudo, Theme, ThemeStack, Value};
 use crate::registry::Registry;
 
 /// What a property accepts.
@@ -72,22 +72,27 @@ fn allowed(pseudo: Option<Pseudo>, name: &str) -> Option<Kind> {
 }
 
 impl Theme {
-    /// Problems with this theme, as `selector: problem`; empty when valid.
+    /// Problems with this theme on its own, as `selector: problem`; empty
+    /// when valid. An overlay that uses tokens of the theme below it is
+    /// checked with [`ThemeStack::validate`] instead.
     pub fn validate(&self, registry: &Registry) -> Vec<String> {
+        let colors = color_sets(std::slice::from_ref(self));
+        let mut errors = missing_colors(&colors);
+        errors.extend(self.rule_problems(
+            registry,
+            &font_tokens(std::slice::from_ref(self)),
+            &all(&colors),
+        ));
+        errors
+    }
+
+    fn rule_problems(
+        &self,
+        registry: &Registry,
+        fonts: &BTreeSet<&str>,
+        colors: &BTreeSet<&str>,
+    ) -> Vec<String> {
         let mut errors = Vec::new();
-        let tokens: BTreeSet<&str> = self
-            .colors
-            .iter()
-            .flat_map(|(_, values)| values.iter().map(|(token, _)| token.as_str()))
-            .collect();
-        for (scheme, values) in &self.colors {
-            let have: BTreeSet<&str> = values.iter().map(|(token, _)| token.as_str()).collect();
-            let missing: Vec<_> = tokens.difference(&have).collect();
-            if !missing.is_empty() {
-                errors.push(format!("colors.{scheme}: missing {missing:?}"));
-            }
-        }
-        let fonts: BTreeSet<&str> = self.fonts.iter().map(|(token, _)| token.as_str()).collect();
         for rule in &self.rules {
             let text = &rule.selector.text;
             for part in &rule.selector.parts {
@@ -105,7 +110,7 @@ impl Theme {
             for (name, value) in rule.props.iter() {
                 let problem = match allowed(rule.selector.pseudo, name) {
                     None => Some("not allowed here".to_owned()),
-                    Some(kind) => check(kind, value, &fonts, &tokens),
+                    Some(kind) => check(kind, value, fonts, colors),
                 };
                 if let Some(problem) = problem {
                     errors.push(format!("{text}: {name} {problem}"));
@@ -114,6 +119,64 @@ impl Theme {
         }
         errors
     }
+}
+
+impl ThemeStack {
+    /// Problems with the stack as applied (spec v0 §7.2): every layer may
+    /// use the font and color tokens of any layer, and each color scheme
+    /// must define every token once merged. Problems name their layer.
+    pub fn validate(&self, registry: &Registry) -> Vec<String> {
+        let layers = self.layers();
+        let colors = color_sets(layers);
+        let fonts = font_tokens(layers);
+        let mut errors = missing_colors(&colors);
+        for theme in layers {
+            let problems = theme.rule_problems(registry, &fonts, &all(&colors));
+            errors.extend(
+                problems
+                    .into_iter()
+                    .map(|problem| format!("{}: {problem}", theme.name)),
+            );
+        }
+        errors
+    }
+}
+
+/// Color tokens per scheme, merged over the layers.
+fn color_sets(layers: &[Theme]) -> BTreeMap<&str, BTreeSet<&str>> {
+    let mut schemes: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for theme in layers {
+        for (scheme, values) in &theme.colors {
+            schemes
+                .entry(scheme)
+                .or_default()
+                .extend(values.iter().map(|(token, _)| token.as_str()));
+        }
+    }
+    schemes
+}
+
+fn all<'a>(schemes: &BTreeMap<&'a str, BTreeSet<&'a str>>) -> BTreeSet<&'a str> {
+    schemes.values().flatten().copied().collect()
+}
+
+/// Light and dark must name the same tokens.
+fn missing_colors(schemes: &BTreeMap<&str, BTreeSet<&str>>) -> Vec<String> {
+    let tokens = all(schemes);
+    schemes
+        .iter()
+        .filter_map(|(scheme, have)| {
+            let missing: Vec<_> = tokens.difference(have).collect();
+            (!missing.is_empty()).then(|| format!("colors.{scheme}: missing {missing:?}"))
+        })
+        .collect()
+}
+
+fn font_tokens(layers: &[Theme]) -> BTreeSet<&str> {
+    layers
+        .iter()
+        .flat_map(|theme| theme.fonts.iter().map(|(token, _)| token.as_str()))
+        .collect()
 }
 
 fn check(
@@ -138,6 +201,46 @@ mod tests {
     use super::*;
 
     const TYPES: &str = "[types.badge]\nkind = \"inline\"\nattrs = { scheme = \"string\" }\n";
+
+    #[test]
+    fn overlays_may_use_tokens_of_lower_layers() {
+        let registry = Registry::parse(TYPES).unwrap();
+        let base = Theme::parse(
+            "base",
+            "[meta]\nformat = \"zdict-theme\"\n[fonts]\ntext = [\"Serif\"]\n\
+                                [colors.light]\nfg = \"#000\"\n[colors.dark]\nfg = \"#fff\"\n",
+        )
+        .unwrap();
+        let overlay = Theme::parse(
+            "overlay",
+            "[meta]\nformat = \"zdict-theme\"\n\
+                                   [style.badge]\nfont = \"text\"\ncolor = \"fg\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            overlay.validate(&registry).len(),
+            2,
+            "alone, its tokens are unknown"
+        );
+        let mut stack = ThemeStack::new(base);
+        stack.push(overlay);
+        assert!(
+            stack.validate(&registry).is_empty(),
+            "{:?}",
+            stack.validate(&registry)
+        );
+        stack.push(
+            Theme::parse(
+                "bad",
+                "[meta]\nformat = \"zdict-theme\"\n[colors.light]\naccent = \"#f00\"\n",
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            stack.validate(&registry),
+            ["colors.dark: missing [\"accent\"]"]
+        );
+    }
 
     #[test]
     fn reports_unknown_types_attrs_props_and_tokens() {

@@ -59,19 +59,7 @@ impl Registry {
             };
             let mut children = HashSet::new();
             for child in strings(spec, "children", name)? {
-                match child.strip_prefix('@') {
-                    Some(group) => {
-                        let members = groups
-                            .get(group)
-                            .and_then(toml::Value::as_array)
-                            .ok_or_else(|| bad_types(format!("{name}: unknown group @{group}")))?;
-                        children
-                            .extend(members.iter().filter_map(|m| m.as_str().map(String::from)));
-                    }
-                    None => {
-                        children.insert(child);
-                    }
-                }
+                expand(groups, &child, name, &mut Vec::new(), &mut children)?;
             }
             let mut attrs = BTreeMap::new();
             if let Some(declared) = spec.get("attrs").and_then(toml::Value::as_table) {
@@ -139,6 +127,38 @@ impl Pack {
     }
 }
 
+/// Add a child type, or every member of a `@group` (groups may name groups).
+fn expand(
+    groups: &toml::Table,
+    child: &str,
+    owner: &str,
+    open: &mut Vec<String>,
+    children: &mut HashSet<String>,
+) -> Result<()> {
+    let Some(group) = child.strip_prefix('@') else {
+        children.insert(child.to_owned());
+        return Ok(());
+    };
+    if open.iter().any(|name| name == group) {
+        return Err(bad_types(format!(
+            "{owner}: group @{group} contains itself"
+        )));
+    }
+    let members = groups
+        .get(group)
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| bad_types(format!("{owner}: unknown group @{group}")))?;
+    open.push(group.to_owned());
+    for member in members {
+        let member = member
+            .as_str()
+            .ok_or_else(|| bad_types(format!("group @{group} has a non-string member")))?;
+        expand(groups, member, owner, open, children)?;
+    }
+    open.pop();
+    Ok(())
+}
+
 fn table<'a>(data: &'a toml::Table, key: &str) -> Result<&'a toml::Table> {
     static EMPTY: std::sync::OnceLock<toml::Table> = std::sync::OnceLock::new();
     match data.get(key) {
@@ -202,11 +222,24 @@ children = ["#text"]
     }
 
     #[test]
+    fn expands_groups_inside_groups() {
+        let text = "[groups]\nouter = [\"@inner\", \"b\"]\ninner = [\"#text\"]\n\
+                    [types.a]\nkind = \"block\"\nchildren = [\"@outer\"]\n";
+        let registry = Registry::parse(text).unwrap();
+        let children = &registry.get("a").unwrap().children;
+        assert_eq!(
+            children,
+            &HashSet::from(["#text".to_owned(), "b".to_owned()])
+        );
+    }
+
+    #[test]
     fn rejects_bad_registries() {
         for bad in [
             "[types.a]\nkind = \"grid\"",
             "[types.a]\nkind = \"block\"\nchildren = [\"@nope\"]",
             "[types.a]\nkind = \"block\"\nroles = [\"fly\"]",
+            "[groups]\ng = [\"@g\"]\n[types.a]\nkind = \"block\"\nchildren = [\"@g\"]",
             "not toml =",
         ] {
             assert!(
