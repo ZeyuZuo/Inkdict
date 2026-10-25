@@ -9,6 +9,7 @@ use zstd::dict::DecoderDictionary;
 
 use crate::error::{Error, Result};
 use crate::meta::Meta;
+use crate::resource::{Sources, read_sources};
 use crate::{APPLICATION_ID, FORMAT_VERSION};
 
 /// An open `.zdpack`, read-only. `Send + Sync`, so apps can share one
@@ -18,6 +19,7 @@ pub struct Pack {
     meta: Meta,
     /// Prepared once: every entry body is compressed with it (spec/pack-v0.md §2.3).
     pub(crate) dictionary: Option<DecoderDictionary<'static>>,
+    pub(crate) sources: Sources,
 }
 
 impl Pack {
@@ -39,10 +41,12 @@ impl Pack {
             Some(name) => Some(DecoderDictionary::copy(&read_file(&db, name)?)),
             None => None,
         };
+        let sources = read_sources(&db)?;
         Ok(Pack {
             db: Mutex::new(db),
             meta,
             dictionary,
+            sources,
         })
     }
 
