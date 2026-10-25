@@ -32,11 +32,13 @@ pub struct Correction {
 }
 
 /// Edits allowed for a typed key of `chars` characters: none for one or
-/// two (everything is close), one up to five, two from six.
+/// two (everything is close), one for three or four, two from five (a
+/// five-letter typo is often a longer word with two letters dropped).
+/// Distance sorts first, so a looser limit only adds candidates after.
 pub fn max_distance(chars: usize) -> usize {
     match chars {
         0..=2 => 0,
-        3..=5 => 1,
+        3..=4 => 1,
         _ => 2,
     }
 }
@@ -195,8 +197,8 @@ fn index_error(err: fst::Error) -> Error {
 }
 
 impl Pack {
-    /// Forms within a few typing errors of the input, closest first, then by
-    /// rank. The allowed distance grows with the input length
+    /// Forms within a few typing errors of the input, one per lookup key,
+    /// closest first, then by rank. The allowed distance grows with the input length
     /// ([`max_distance`]); exact matches come first with distance 0.
     pub fn correct(&self, text: &str, limit: usize) -> Result<Vec<Correction>> {
         let key = norm(text);
@@ -221,10 +223,12 @@ impl Pack {
         let db = self.db();
         let mut statement = db.prepare_cached(
             "SELECT l.form, l.kind, e.key, e.headword, e.homograph, l.anchor FROM lookup l \
-             JOIN entries e ON e.id = l.entry WHERE l.norm = ? ORDER BY l.rank, l.entry",
+             JOIN entries e ON e.id = l.entry WHERE l.norm = ? ORDER BY l.rank, l.entry LIMIT 1",
         )?;
         let mut seen = HashSet::new();
         let mut found = Vec::new();
+        // One result per candidate key, its best row: homographs and the
+        // forms of one entry would otherwise fill the list with one word.
         for (candidate, distance, _) in candidates {
             let rows = statement.query_map([&candidate], |row| {
                 Ok(Suggestion {
@@ -337,7 +341,21 @@ mod tests {
     }
 
     #[test]
+    fn returns_one_result_per_key() {
+        let test = TestPack::new();
+        for id in 1..=3 {
+            let json = format!(r#"{{"type":"entry","id":"k{id}","lang":"en"}}"#);
+            test.entry(id, "right", Some(id), &json)
+                .lookup("right", id, id, 0, "right", "headword");
+        }
+        test.lookup("right", 9, 1, 2, "right", "phrase");
+        let found = test.open().correct("rihgt", 10).unwrap();
+        let entries: Vec<_> = found.iter().map(|c| c.suggestion.entry.as_str()).collect();
+        assert_eq!(entries, ["k1"]);
+    }
+
+    #[test]
     fn allowed_distance_grows_with_length() {
-        assert_eq!([2, 3, 5, 6, 12].map(max_distance), [0, 1, 1, 2, 2]);
+        assert_eq!([2, 3, 4, 5, 12].map(max_distance), [0, 1, 1, 2, 2]);
     }
 }
