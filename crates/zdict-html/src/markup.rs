@@ -1,11 +1,23 @@
-//! Print the render tree using the exact markup of `oxdic/preview.py`.
-//! Theme selection, interpolation, joins and visibility belong to the tree.
+//! Render tree to HTML. Every display decision is already in the tree;
+//! this only prints it. `Markup::Preview` is exactly OxDic's
+//! `oxdic/preview.py` (checked byte for byte); `Markup::App` adds the
+//! attributes the desktop app needs (apps/desktop/README.md).
 
 use zdict_core::theme::Style;
 use zdict_core::{Generated, Icon, RenderChild, RenderNode};
 
+/// Which attributes links, audio, images and anchors carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Markup {
+    /// The reference renderer's HTML: `href="#entry"` links, one audio URL.
+    Preview,
+    /// For the app: `data-link` JSON on links, every audio and image URL,
+    /// `data-anchor` numbers on anchors.
+    App,
+}
+
 /// Python's `html.escape` with its default `quote=True`.
-fn escape(text: &str) -> String {
+pub(crate) fn escape(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for ch in text.chars() {
         match ch {
@@ -20,9 +32,18 @@ fn escape(text: &str) -> String {
     escaped
 }
 
-fn css_of(style: &Style, block: bool) -> String {
+pub(crate) fn css_of(style: &Style, block: bool) -> String {
     let mut rules = Vec::new();
     for (name, value) in style.iter() {
+        // Theme strings are tokens (`fg`, `bold`, `ui`); anything else could
+        // break out of the declaration or the attribute, so it is dropped.
+        if value.as_str().is_some_and(|text| {
+            !text
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        }) {
+            continue;
+        }
         let rule = match name {
             "font" => format!("font-family:var(--font-{value})"),
             "size" => format!("font-size:{value}em"),
@@ -35,21 +56,21 @@ fn css_of(style: &Style, block: bool) -> String {
                 }
             ),
             "style" => format!("font-style:{value}"),
-            "case" => match value.as_str().unwrap() {
+            "case" => match value.as_str().unwrap_or_default() {
                 "upper" => "text-transform:uppercase",
                 "lower" => "text-transform:lowercase",
                 "small-caps" => "font-variant:small-caps",
                 "none" => "text-transform:none;font-variant:normal",
-                other => panic!("unknown case: {other}"),
+                _ => continue,
             }
             .to_owned(),
             "decoration" => format!(
                 "text-decoration:{}",
-                match value.as_str().unwrap() {
+                match value.as_str().unwrap_or_default() {
                     "strike" => "line-through",
                     "underline" => "underline",
                     "none" => "none",
-                    other => panic!("unknown decoration: {other}"),
+                    _ => continue,
                 }
             ),
             "color" | "background" => format!("{name}:var(--c-{value})"),
@@ -79,7 +100,7 @@ fn css_of(style: &Style, block: bool) -> String {
     rules.join(";")
 }
 
-fn svg(name: &str) -> String {
+pub(crate) fn svg(name: &str) -> String {
     // Literal SVG bodies from preview.py's ICONS, including attribute order.
     let body = match name {
         "speaker" => concat!(
@@ -97,7 +118,7 @@ fn svg(name: &str) -> String {
             "stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4.5 8h6.2M8 5.2 10.8 8 8 10.8\"/>"
         ),
         "diamond" => "<path fill=\"currentColor\" d=\"M8 3.5 12.5 8 8 12.5 3.5 8z\"/>",
-        other => panic!("unknown icon: {other}"),
+        _ => return String::new(),
     };
     format!(
         "<svg viewBox=\"0 0 16 16\" width=\"1em\" height=\"1em\" aria-hidden=\"true\" class=\"dx-svg\">{body}</svg>"
@@ -127,25 +148,31 @@ fn pseudo(generated: Option<&Generated>, which: &str, block: bool) -> String {
     )
 }
 
-fn child(child: &RenderChild) -> String {
+fn child(child: &RenderChild, markup: Markup) -> String {
     match child {
         RenderChild::Text(text) => escape(text),
-        RenderChild::Node(node) => html(node),
+        RenderChild::Node(node) => html(node, markup),
     }
 }
 
-fn children(node: &RenderNode) -> String {
-    node.children.iter().map(child).collect()
+fn children(node: &RenderNode, markup: Markup) -> String {
+    node.children
+        .iter()
+        .map(|item| child(item, markup))
+        .collect()
 }
 
-pub fn html(node: &RenderNode) -> String {
+/// HTML of a rendered node and its descendants.
+pub fn html(node: &RenderNode, markup: Markup) -> String {
     let mut extra = String::new();
     if let Some(lang) = &node.lang {
-        // The reference writes lang verbatim (unlike id).
-        extra.push_str(&format!(" lang=\"{lang}\""));
+        extra.push_str(&format!(" lang=\"{}\"", escape(lang)));
     }
     if let Some(anchor) = &node.anchor {
         extra.push_str(&format!(" id=\"{}\"", escape(&anchor.id)));
+        if markup == Markup::App {
+            extra.push_str(&format!(" data-anchor=\"{}\"", anchor.number));
+        }
     }
     let mut css = css_of(&node.style, node.block);
     if !node.block && node.style.get("background").is_some() {
@@ -162,35 +189,56 @@ pub fn html(node: &RenderNode) -> String {
     }
     if let Some(collapse) = &node.collapse {
         let state = if collapse.open { " open" } else { "" };
-        let summary = collapse.summary.as_deref().map(child).unwrap_or_default();
+        let summary = collapse
+            .summary
+            .as_deref()
+            .map(|summary| child(summary, markup))
+            .unwrap_or_default();
         return format!(
             "<details class=\"dx-{}\"{state}{extra} style=\"{css}\"><summary>{summary}</summary>{}</details>",
-            node.kind,
-            children(node)
+            escape(&node.kind),
+            children(node, markup)
         );
     }
-    let mut body = children(node);
+    let mut body = children(node, markup);
     if let Some(audio) = &node.audio {
-        let url = audio.urls.first().map(String::as_str).unwrap_or_default();
+        let url = match markup {
+            Markup::Preview => audio.urls.first().cloned().unwrap_or_default(),
+            Markup::App => audio.urls.join(" "),
+        };
         let region = audio.region.as_deref().unwrap_or_default();
         body.push_str(&icon(
             &audio.icon,
             "button",
             &format!(
                 " data-audio=\"{}\" title=\"{}\"",
-                escape(url),
+                escape(&url),
                 escape(region)
             ),
         ));
     }
     if let Some(image) = &node.image {
         let url = image.urls.first().map(String::as_str).unwrap_or_default();
+        let fallback = match markup {
+            Markup::App if image.urls.len() > 1 => {
+                format!(" data-fallback=\"{}\"", escape(&image.urls[1..].join(" ")))
+            }
+            _ => String::new(),
+        };
         body.push_str(&format!(
-            "<img src=\"{}\" alt=\"\" loading=\"lazy\" style=\"width:100%\">",
+            "<img src=\"{}\"{fallback} alt=\"\" loading=\"lazy\" style=\"width:100%\">",
             escape(url)
         ));
     }
-    if let Some(link) = &node.link {
+    if let Some(link) = &node.link
+        && markup == Markup::App
+    {
+        let json = serde_json::to_string(link).expect("a link serializes");
+        body = format!(
+            "<a href=\"#\" class=\"dx-link\" data-link=\"{}\">{body}</a>",
+            escape(&json)
+        );
+    } else if let Some(link) = &node.link {
         let target = link.entry.as_deref().unwrap_or_default();
         let title = if target.is_empty() { "look up" } else { target };
         body = format!(
@@ -214,7 +262,7 @@ pub fn html(node: &RenderNode) -> String {
             .unwrap_or_else(|| escape(&marker.text));
         format!(
             "<span class=\"dx-marker\" style=\"width:{}em;{}\">{mark}</span>",
-            marker.width,
+            escape(&marker.width.to_string()),
             css_of(&marker.style, false)
         )
     });
@@ -222,6 +270,58 @@ pub fn html(node: &RenderNode) -> String {
     let tag = if node.block { "div" } else { "span" };
     format!(
         "<{tag} class=\"dx-{}\"{extra} style=\"{css}\">{title}{marker}{lead}{before}{body}{after}</{tag}>",
-        node.kind
+        escape(&node.kind)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zdict_core::theme::Value;
+    use zdict_core::{Anchor, Image, Link};
+
+    fn node(kind: &str, children: Vec<RenderChild>) -> RenderNode {
+        let mut node = RenderNode::new(kind, false);
+        node.children = children;
+        node
+    }
+
+    #[test]
+    fn app_markup_carries_links_audio_fallbacks_and_anchor_numbers() {
+        let mut word = node("xword", vec![RenderChild::Text("pear".into())]);
+        word.link = Some(Link {
+            entry: Some("k\"2".into()),
+            anchor: None,
+            anchor_type: None,
+            text: "pear".into(),
+        });
+        let app = html(&word, Markup::App);
+        assert_eq!(
+            app,
+            "<span class=\"dx-xword\" style=\"\"><a href=\"#\" class=\"dx-link\" data-link=\"{&quot;entry&quot;:&quot;k\\&quot;2&quot;,&quot;text&quot;:&quot;pear&quot;}\">pear</a></span>"
+        );
+        let mut sense = node("sense", Vec::new());
+        sense.anchor = Some(Anchor {
+            id: "s1".into(),
+            number: 3,
+        });
+        assert!(html(&sense, Markup::App).contains(" id=\"s1\" data-anchor=\"3\""));
+        assert!(!html(&sense, Markup::Preview).contains("data-anchor"));
+        let mut picture = node("image", Vec::new());
+        picture.image = Some(Image {
+            urls: vec!["a.jpg".into(), "b.jpg".into()],
+        });
+        assert!(html(&picture, Markup::App).contains("src=\"a.jpg\" data-fallback=\"b.jpg\""));
+    }
+
+    #[test]
+    fn hostile_values_cannot_leave_their_attribute() {
+        let mut bad = node("x\"><script>", vec![RenderChild::Text("<b>".into())]);
+        bad.lang = Some("en\" onclick=\"x".into());
+        bad.style.set("color", Value::Str("red;}<x".into()));
+        bad.style.set("weight", Value::Str("bold".into()));
+        let html = html(&bad, Markup::App);
+        assert!(!html.contains("<script") && !html.contains("<b>") && !html.contains("\" onclick"));
+        assert!(html.contains("style=\"font-weight:700\""), "{html}");
+    }
 }

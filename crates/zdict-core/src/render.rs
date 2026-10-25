@@ -55,6 +55,30 @@ pub struct RenderNode {
     pub children: Vec<RenderChild>,
 }
 
+impl RenderNode {
+    /// An empty node of this type: no style, generated parts or children.
+    pub fn new(kind: &str, block: bool) -> Self {
+        RenderNode {
+            kind: kind.to_owned(),
+            block,
+            lang: None,
+            anchor: None,
+            style: Style::default(),
+            text: TextStyle::default(),
+            title: None,
+            marker: None,
+            icon: None,
+            before: None,
+            after: None,
+            audio: None,
+            image: None,
+            link: None,
+            collapse: None,
+            children: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum RenderChild {
@@ -289,24 +313,9 @@ impl<'a> Renderer<'a> {
             None => self.registry.kind(&node.kind) == Kind::Block,
         };
         let has = |role| self.registry.has_role(&node.kind, role);
-        let mut rendered = RenderNode {
-            kind: node.kind.clone(),
-            block,
-            lang: node.lang.clone(),
-            anchor: None,
-            style: Style::default(),
-            text: text.clone(),
-            title: None,
-            marker: None,
-            icon: None,
-            before: None,
-            after: None,
-            audio: None,
-            image: None,
-            link: None,
-            collapse: None,
-            children: Vec::new(),
-        };
+        let mut rendered = RenderNode::new(&node.kind, block);
+        rendered.lang = node.lang.clone();
+        rendered.text = text.clone();
         if has(Role::Anchor)
             && let Some(id) = node.id.as_deref()
         {

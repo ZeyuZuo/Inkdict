@@ -1,16 +1,35 @@
-//! Byte-for-byte compatibility with OxDic's reference HTML renderer.
-
-mod common;
-mod html;
-
-use std::time::Instant;
+//! `Markup::Preview` is byte for byte OxDic's reference renderer
+//! (`oxdic/preview.py`) on oxdata/golden/html.json.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::time::Instant;
 
-use common::{load, oxdata};
-use html::html;
+use serde_json::Value;
 use zdict_core::theme::ThemeStack;
-use zdict_core::{Entry, Node};
+use zdict_core::{Entry, Node, Pack};
+use zdict_html::{Markup, entry_html};
+
+fn oxdata() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../oxdata")
+}
+
+/// The Oxford pack and html.json; None (with a note) without oxdata/.
+fn load(golden: &str) -> Option<(Pack, Value)> {
+    let pack = oxdata().join("oalecd10.zdpack");
+    let golden = oxdata().join("golden").join(golden);
+    if !pack.is_file() {
+        eprintln!("skipped: {} missing", pack.display());
+        return None;
+    }
+    assert!(
+        golden.is_file(),
+        "{} missing: run scripts/make-golden.py",
+        golden.display()
+    );
+    let golden = serde_json::from_str(&std::fs::read_to_string(golden).unwrap()).unwrap();
+    Some((Pack::open(pack).unwrap(), golden))
+}
 
 /// The checked-in examples as make-golden.py rendered them: from their JSON
 /// files (book.excerpt.json is shorter than the pack entry with its key).
@@ -84,7 +103,7 @@ fn html_matches_reference() {
             },
             None => pack.entry(key).unwrap(),
         };
-        let actual = html(&renderer.render(&entry));
+        let actual = entry_html(&renderer.render(&entry), Markup::Preview);
         let expected = case["html"].as_str().unwrap();
         if actual != expected {
             mismatches.push(difference(key, expected, &actual));
