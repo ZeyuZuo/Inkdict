@@ -1,0 +1,8 @@
+[package]
+name = "zdict-core"
+description = "Reads ZDict dictionary packs (.zdpack): entries, lookup, full-text search, resources"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]

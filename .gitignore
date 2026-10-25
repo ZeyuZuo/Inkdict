@@ -1,0 +1,33 @@
+# Rust
+target/
+
+# Web / desktop
+node_modules/
+dist/
+.vite/
+
+# Android
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+
+# Dictionary data never goes into this repository (packs, databases, media)
+*.zdpack
+*.sqlite
+*.sqlite3
+*.db
+
+# Secrets and local settings
+.env
+.env.*
+*.pem
+*.key
+settings.json
+
+# Editors and OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
