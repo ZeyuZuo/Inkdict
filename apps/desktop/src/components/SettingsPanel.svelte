@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Settings } from '../lib/types';
   import type { ThemeMode } from '../lib/storage';
+  import { isTauri } from '../lib/api';
   let { settings, theme, busy, mock, onsettings, ontheme, onpack, onclose }: {
     settings: Settings; theme: ThemeMode; busy: boolean; mock: boolean;
     onsettings: (settings: Settings) => void; ontheme: (theme: ThemeMode) => void;
@@ -11,6 +12,14 @@
   async function openPack(event: SubmitEvent) {
     event.preventDefault(); packBusy = true;
     try { await onpack(path); } finally { packBusy = false; }
+  }
+  /** Native file dialog (Tauri only); the chosen file opens at once. */
+  async function choosePack() {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const chosen = await open({ multiple: false, directory: false, filters: [{ name: 'ZDict 词典包', extensions: ['zdpack'] }] });
+    if (typeof chosen !== 'string') return;
+    path = chosen; packBusy = true;
+    try { await onpack(chosen); } finally { packBusy = false; }
   }
 </script>
 
@@ -35,6 +44,7 @@
       <form onsubmit={openPack}>
         <label class="field-label" for="pack-path">词典包路径</label>
         <div class="pack-input"><input id="pack-path" bind:value={path} placeholder="/path/to/dictionary.zdpack" required /><button disabled={packBusy || !path.trim()}>打开</button></div>
+        {#if isTauri()}<button type="button" class="pack-choose" disabled={packBusy} onclick={choosePack}>选择文件…</button>{/if}
         {#if mock}<p class="small-muted">演示模式使用本地原创词条。</p>{/if}
       </form>
     </div>

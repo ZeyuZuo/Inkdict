@@ -91,6 +91,7 @@ legend, .field-label { color: var(--c-muted); font-size: .72rem; margin-bottom: 
 .settings-other select { width: 100%; margin-bottom: .85rem; }
 .pack-input { display: flex; gap: .4rem; }
 .pack-input input { width: 100%; font-size: .75rem; }
+.pack-choose { margin-top: .4rem; width: 100%; }
 .pack-input button { white-space: nowrap; }
 .small-muted { color: var(--c-faint); font-size: .68rem; }
 .perf-panel { position: fixed; bottom: 2.5rem; right: 2rem; z-index: 10; width: min(380px, calc(100vw - 2rem)); padding: 1rem; background: var(--card, #fff); border: 1px solid var(--c-rule); border-radius: 10px; box-shadow: 0 8px 40px #0002; }

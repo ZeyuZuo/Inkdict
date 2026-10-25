@@ -57,6 +57,8 @@ export class Dictionary {
     ]);
     for (const result of results) if (result.status === 'rejected') this.report(result.reason);
     this.settingsBusy = false;
+    // First run: no pack yet, so open the panel where one is chosen.
+    if (!this.pack) this.showSettings = true;
   }
 
   report(error: unknown) {
