@@ -1,7 +1,7 @@
 //! ZDict core: reads `.zdpack` dictionary packs (spec/pack-v0.md).
 //!
-//! Every app embeds this crate: Android through UniFFI, the desktop app
-//! through Tauri, the web app and server through WebAssembly.
+//! Both clients embed this crate: Android through UniFFI, the desktop app
+//! (Tauri 2) directly.
 
 mod entry;
 mod error;
