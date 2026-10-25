@@ -12,9 +12,7 @@ ZDict 是一套开放的词典格式和配套应用。这个仓库只放协议�
 ```text
 spec/               协议（已冻结的 v0）
   v0.md             内容格式、类型表格式、主题格式、资源引用、链接目标
-  pack-v0.md        词典包 .zdpack（SQLite）的格式
-  types.toml        类型表
-  themes/           主题
+  pack-v0.md        词典包 .zdpack（SQLite）的格式；类型表和主题随包分发，不在这里
 crates/
   zdict-core/       Rust 核心：读包、联想、全文检索、纠错、解码、主题计算
 apps/

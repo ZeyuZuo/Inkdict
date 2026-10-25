@@ -16,6 +16,8 @@ done
 mkdir -p "$out/examples"
 cp -p "$oxdic"/data/build/{oalecd10.zdpack,entries.jsonl,convert_report.json,pack_report.json} "$out/"
 cp -p "$oxdic"/examples/*.json "$oxdic"/examples/resources.toml "$out/examples/"
+# Readable copies of the pack inputs; the pack itself holds the same files.
+rm -rf "$out/pack-inputs" && cp -rp "$oxdic/packs/oalecd10" "$out/pack-inputs"
 (cd "$out" && sha256sum oalecd10.zdpack entries.jsonl > SHA256SUMS)
 echo "synced into $out:"
 ls -l "$out" "$out/examples"
