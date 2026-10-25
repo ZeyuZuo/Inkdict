@@ -8,6 +8,12 @@ use crate::error::{Error, Result};
 use crate::node::{Entry, Node};
 use crate::pack::Pack;
 
+/// Decoded entries larger than this are rejected (Oxford's largest: 225 KB),
+/// so a hostile pack cannot exhaust memory.
+const MAX_ENTRY_BYTES: u64 = 8 << 20;
+/// Largest zstd window the decoder allocates: 8 MiB, the same bound.
+const WINDOW_LOG_MAX: u32 = 23;
+
 const SELECT: &str = "SELECT id, key, headword, homograph, body FROM entries WHERE";
 
 struct Row {
@@ -67,16 +73,26 @@ impl Pack {
     }
 
     fn decompress(&self, key: &str, body: &[u8]) -> Result<Vec<u8>> {
+        use zstd::stream::read::Decoder;
+        let mut decoder = match &self.dictionary {
+            Some(dictionary) => Decoder::with_prepared_dictionary(body, dictionary),
+            None => Decoder::with_buffer(body),
+        }
+        .map_err(|err| bad_entry(key, err))?;
+        decoder
+            .window_log_max(WINDOW_LOG_MAX)
+            .map_err(|err| bad_entry(key, err))?;
         let mut json = Vec::new();
-        let read = match &self.dictionary {
-            Some(dictionary) => {
-                zstd::stream::read::Decoder::with_prepared_dictionary(body, dictionary)
-                    .and_then(|mut decoder| decoder.read_to_end(&mut json))
-            }
-            None => zstd::stream::read::Decoder::with_buffer(body)
-                .and_then(|mut decoder| decoder.read_to_end(&mut json)),
-        };
-        read.map_err(|err| bad_entry(key, err))?;
+        decoder
+            .take(MAX_ENTRY_BYTES + 1)
+            .read_to_end(&mut json)
+            .map_err(|err| bad_entry(key, err))?;
+        if json.len() as u64 > MAX_ENTRY_BYTES {
+            return Err(bad_entry(
+                key,
+                format!("larger than {MAX_ENTRY_BYTES} bytes"),
+            ));
+        }
         Ok(json)
     }
 }
@@ -133,5 +149,19 @@ mod tests {
         let pack = test.open();
         assert!(matches!(pack.entry("k"), Err(Error::BadEntry { key, .. }) if key == "k"));
         assert!(matches!(pack.entry("k2"), Err(Error::BadEntry { key, .. }) if key == "k2"));
+    }
+
+    #[test]
+    fn rejects_entries_over_the_size_limit() {
+        let test = TestPack::new();
+        let text = "a".repeat(MAX_ENTRY_BYTES as usize);
+        test.entry(
+            1,
+            "big",
+            None,
+            &format!(r#"{{"type":"entry","id":"big","text":"{text}"}}"#),
+        );
+        let found = test.open().entry_json("big");
+        assert!(matches!(found, Err(Error::BadEntry { reason, .. }) if reason.contains("larger")));
     }
 }

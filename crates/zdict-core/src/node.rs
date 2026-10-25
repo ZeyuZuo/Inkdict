@@ -1,8 +1,10 @@
 //! Entry content: a tree of typed nodes (spec/v0.md §2).
 
 use std::collections::BTreeMap;
+use std::fmt;
 
-use serde::{Deserialize, Serialize};
+use serde::de::{self, MapAccess, Visitor, value::MapAccessDeserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// One node. Field names and omission rules follow the JSON form exactly,
 /// so a node serializes back to the JSON it was read from.
@@ -26,7 +28,7 @@ pub struct Node {
 }
 
 /// An element of `children`: a string or a node.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Child {
     Text(String),
@@ -34,13 +36,43 @@ pub enum Child {
 }
 
 /// An attribute value. The registry's `string`, `res`, `ref` and `enum`
-/// types are all strings.
+/// types are all strings; `int` is 64-bit (Oxford's largest is 43).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Attr {
     Bool(bool),
     Int(i64),
     Str(String),
+}
+
+// Hand-written instead of `untagged`, which buffers every child's whole
+// subtree before trying each variant: O(nodes × depth) on decode.
+impl<'de> Deserialize<'de> for Child {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ChildVisitor;
+
+        impl<'de> Visitor<'de> for ChildVisitor {
+            type Value = Child;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a string or a node object")
+            }
+
+            fn visit_str<E: de::Error>(self, text: &str) -> Result<Child, E> {
+                Ok(Child::Text(text.to_owned()))
+            }
+
+            fn visit_string<E: de::Error>(self, text: String) -> Result<Child, E> {
+                Ok(Child::Text(text))
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Child, A::Error> {
+                Node::deserialize(MapAccessDeserializer::new(map)).map(Child::Node)
+            }
+        }
+
+        deserializer.deserialize_any(ChildVisitor)
+    }
 }
 
 impl Attr {
@@ -102,5 +134,13 @@ mod tests {
     #[test]
     fn rejects_nodes_without_type() {
         assert!(serde_json::from_str::<Node>(r#"{"text":"a"}"#).is_err());
+    }
+
+    #[test]
+    fn rejects_children_that_are_neither_string_nor_node() {
+        for children in ["[1]", "[[\"a\"]]", "[null]", r#"[{"text":"no type"}]"#] {
+            let json = format!(r#"{{"type":"x","children":{children}}}"#);
+            assert!(serde_json::from_str::<Node>(&json).is_err(), "{children}");
+        }
     }
 }
