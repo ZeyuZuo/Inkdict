@@ -213,6 +213,46 @@ def anchors_golden(pack, keys, anchor_node, rng):
     return cases
 
 
+def html_golden(pack, keys, registry, theme, renderer):
+    """Example HTML plus independent samples of ordinary and special entries."""
+    rng = random.Random(20261026)
+    selected = set(rng.sample(keys, 500))
+
+    def special(node, path):
+        if not isinstance(node, dict):
+            return False
+        if node['type'] in ('box_ref', 'image'):
+            return True
+        path = path + [renderer.frame(node, path)]
+        if theme.own_style(path).get('collapse', 'none') != 'none':
+            return True
+        return any(special(child, path) for child in node.get('children', []))
+
+    special_keys = []
+    for key in keys:
+        entry = reference('html.json', key, pack.entry, key)
+        if entry is not FAILED and special(entry, []):
+            special_keys.append(key)
+    selected.update(rng.sample(special_keys, 300) if len(special_keys) > 300 else special_keys)
+    examples = {}
+    for path in sorted((OXDATA / 'examples').glob('*.json')):
+        entry = json.loads(path.read_text(encoding='utf-8'))
+        examples[entry['id']] = entry
+    selected.update(examples)
+
+    cases = []
+    for key in sorted(selected):
+        entry = examples[key] if key in examples else reference('html.json', key, pack.entry, key)
+        if entry is FAILED:
+            continue
+        rendered = reference('html.json', key, renderer.entry, entry)
+        if rendered is not FAILED:
+            cases.append({'entry': key, 'html': rendered})
+    errors = theme.validate(registry)
+    print(f'  html: {len(cases):,} cases; theme_errors: {errors}')
+    return {'theme_errors': errors, 'cases': cases}
+
+
 def write(name, data):
     path = OXDATA / 'golden' / name
     path.parent.mkdir(exist_ok=True)
@@ -228,6 +268,8 @@ def main():
     sys.path.insert(0, str(oxdic))
     from oxdic.pack import text
     from oxdic.pack.reader import Pack, anchor_node
+    from oxdic.preview import Renderer, Resolver
+    from oxdic.protocol import Registry, Theme
 
     if not PACK.is_file():
         sys.exit(f'missing {PACK} (run scripts/sync-oxdata.sh first)')
@@ -244,6 +286,13 @@ def main():
         write('search.json', search_golden(pack, headwords, chinese, text, rng))
         write('resources.json', resources_golden(pack, refs, rng))
         write('anchors.json', anchors_golden(pack, keys, anchor_node, rng))
+        types_path = OXDATA / 'pack-inputs/types.toml'
+        theme_path = OXDATA / 'pack-inputs/themes/default.toml'
+        assert types_path.read_bytes() == pack.file('types.toml'), 'types.toml differs from pack'
+        assert theme_path.read_bytes() == pack.file('themes/default.toml'), 'default theme differs from pack'
+        registry, theme = Registry(types_path), Theme(theme_path)
+        renderer = Renderer(registry, theme, Resolver(OXDATA / 'examples/resources.toml'))
+        write('html.json', html_golden(pack, keys, registry, theme, renderer))
     finally:
         pack.close()
     print(f'Runtime: {time.perf_counter() - started:.2f}s')
