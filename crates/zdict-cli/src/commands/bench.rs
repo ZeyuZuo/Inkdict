@@ -6,7 +6,8 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
-use zdict_core::Pack;
+use zdict_core::theme::ThemeStack;
+use zdict_core::{Pack, Renderer};
 
 use super::print_json;
 use crate::args::BenchKind;
@@ -24,34 +25,64 @@ pub fn run(
     let queries: Vec<_> = input
         .lines()
         .filter(|line| !line.trim().is_empty())
+        .map(|line| match kind {
+            BenchKind::Correct => line.split('\t').next().unwrap(),
+            _ => line,
+        })
         .collect();
     ensure!(
         !queries.is_empty(),
         "{} contains no queries",
         path.display()
     );
+    ensure!(
+        queries.iter().all(|query| !query.trim().is_empty()),
+        "{} contains an empty query in its first TSV column",
+        path.display()
+    );
     let count = queries
         .len()
         .checked_mul(repeat)
         .context("query count times --repeat is too large")?;
+    let prepare_ms = if matches!(kind, BenchKind::Correct) {
+        let started = Instant::now();
+        pack.prepare_correction()?;
+        Some(started.elapsed().as_secs_f64() * 1000.0)
+    } else {
+        None
+    };
+    let render_setup = if matches!(kind, BenchKind::Render) {
+        Some((pack.registry()?, ThemeStack::new(pack.theme("default")?)))
+    } else {
+        None
+    };
+    let renderer = render_setup
+        .as_ref()
+        .map(|(registry, themes)| pack.renderer(registry, themes));
     for query in queries.iter().take(100) {
-        call(pack, kind, query)?;
+        call(pack, kind, query, renderer.as_ref())?;
     }
     let mut samples = Vec::with_capacity(count);
     let total = Instant::now();
     for _ in 0..repeat {
         for query in &queries {
             let started = Instant::now();
-            call(pack, kind, query)?;
+            call(pack, kind, query, renderer.as_ref())?;
             samples.push(started.elapsed().as_secs_f64() * 1000.0);
         }
     }
     let total_seconds = total.elapsed().as_secs_f64();
-    let stats = statistics(&mut samples, total_seconds);
+    let mut stats = statistics(&mut samples, total_seconds);
+    if let Some(prepare_ms) = prepare_ms {
+        stats["prepare_ms"] = json!(prepare_ms);
+    }
     if json {
         return print_json(out, &stats);
     }
     writeln!(out, "count: {count}")?;
+    if let Some(prepare_ms) = prepare_ms {
+        writeln!(out, "prepare_ms: {prepare_ms:.3}")?;
+    }
     for field in ["p50_ms", "p95_ms", "p99_ms", "max_ms"] {
         writeln!(out, "{field}: {:.3}", stats[field].as_f64().unwrap())?;
     }
@@ -60,7 +91,7 @@ pub fn run(
 }
 
 /// Include result construction and disposal in each timed call, in both readers.
-fn call(pack: &Pack, kind: BenchKind, query: &str) -> Result<()> {
+fn call(pack: &Pack, kind: BenchKind, query: &str, renderer: Option<&Renderer<'_>>) -> Result<()> {
     match kind {
         BenchKind::Suggest => {
             pack.suggest(query, 20)?;
@@ -70,6 +101,15 @@ fn call(pack: &Pack, kind: BenchKind, query: &str) -> Result<()> {
         }
         BenchKind::Entry => {
             pack.entry(query)?;
+        }
+        BenchKind::Correct => {
+            pack.correct(query, 10)?;
+        }
+        BenchKind::Render => {
+            let entry = pack.entry(query)?;
+            renderer
+                .expect("render benchmark has a renderer")
+                .render(&entry);
         }
     }
     Ok(())

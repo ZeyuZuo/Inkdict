@@ -1,7 +1,10 @@
 //! Human-readable and JSON output for the public pack API.
 
 mod bench;
+mod eval;
+mod render;
 mod show;
+mod themes;
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -10,7 +13,7 @@ use anyhow::Result;
 use serde_json::{Value, json};
 use zdict_core::Pack;
 
-use crate::args::Command;
+use crate::args::{Command, EvalCommand};
 
 pub fn run(pack: &Pack, command: Command, json: bool, out: &mut impl Write) -> Result<()> {
     match command {
@@ -66,7 +69,34 @@ pub fn run(pack: &Pack, command: Command, json: bool, out: &mut impl Write) -> R
                 )?;
             }
         }
+        Command::Correct { text, limit } => {
+            let hits = pack.correct(&text, limit)?;
+            if json {
+                return print_json(out, &serde_json::to_value(hits)?);
+            }
+            for correction in hits {
+                let hit = correction.suggestion;
+                writeln!(
+                    out,
+                    "{}\t{}\t{}\t{}#{}",
+                    hit.form,
+                    correction.distance,
+                    headword(&hit.headword, hit.homograph),
+                    hit.entry,
+                    hit.anchor
+                )?;
+            }
+        }
         Command::Show { key_or_word } => return show::run(pack, &key_or_word, json, out),
+        Command::Render {
+            key_or_word,
+            theme,
+            overlays,
+        } => return render::run(pack, &key_or_word, &theme, &overlays, out),
+        Command::Themes => return themes::run(pack, json, out),
+        Command::Eval {
+            command: EvalCommand::Correct { cases_file },
+        } => return eval::run(pack, &cases_file, json, out),
         Command::Bench {
             kind,
             queries_file,

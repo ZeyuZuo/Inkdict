@@ -61,6 +61,48 @@ def write_queries(pack, text):
         path = BENCH / f'{kind}.txt'
         path.write_text('\n'.join(queries) + '\n', encoding='utf-8')
         print(f'wrote {path} ({len(queries):,} queries)')
+    write_correction_and_render_queries(pack, text, keys)
+
+
+def edit(word, rng):
+    """Apply one typing error; swaps always exchange different neighbours."""
+    swaps = [i for i in range(len(word) - 1) if word[i] != word[i + 1]]
+    kinds = ['delete', 'insert', 'substitute'] + (['swap'] if swaps else [])
+    kind = rng.choice(kinds)
+    if kind == 'insert':
+        index = rng.randrange(len(word) + 1)
+        return word[:index] + rng.choice('abcdefghijklmnopqrstuvwxyz') + word[index:]
+    if kind == 'swap':
+        index = rng.choice(swaps)
+        return word[:index] + word[index + 1] + word[index] + word[index + 2:]
+    index = rng.randrange(len(word))
+    if kind == 'delete':
+        return word[:index] + word[index + 1:]
+    letters = 'abcdefghijklmnopqrstuvwxyz'.replace(word[index], '')
+    return word[:index] + rng.choice(letters) + word[index + 1:]
+
+
+def write_correction_and_render_queries(pack, text, keys):
+    """Use a separate seed so existing M1 workloads remain byte-identical."""
+    rng = random.Random(20261027)
+    headwords = sorted({row[0] for row in pack.db.execute('SELECT headword FROM entries')
+                        if re.fullmatch('[a-z]{3,}', row[0])})
+    known = {row[0] for row in pack.db.execute('SELECT DISTINCT norm FROM lookup')}
+    cases = []
+    for index, headword in enumerate(rng.sample(headwords, 2000), start=1):
+        edits = 2 if len(headword) >= 6 and index % 4 == 0 else 1
+        while True:
+            typo = headword
+            for _ in range(edits):
+                typo = edit(typo, rng)
+            if text.norm(typo) not in known:
+                break
+        cases.append(f'{typo}\t{headword}')
+    renders = rng.sample(keys, 1000)
+    for name, queries in [('typos.tsv', cases), ('render.txt', renders)]:
+        path = BENCH / name
+        path.write_text('\n'.join(queries) + '\n', encoding='utf-8')
+        print(f'wrote {path} ({len(queries):,} queries)')
 
 
 def statistics(samples, total_seconds):

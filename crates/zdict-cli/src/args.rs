@@ -29,6 +29,12 @@ pub enum Command {
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
     },
+    /// Correct spelling, closest forms first.
+    Correct {
+        text: String,
+        #[arg(short = 'n', long, default_value_t = 10)]
+        limit: usize,
+    },
     /// Search definitions, translations and examples.
     Search {
         text: String,
@@ -39,6 +45,21 @@ pub enum Command {
     },
     /// Show an entry by key, or the first suggestion for a word.
     Show { key_or_word: String },
+    /// Print a themed render tree as pretty JSON.
+    Render {
+        key_or_word: String,
+        #[arg(long, default_value = "default")]
+        theme: String,
+        #[arg(long = "overlay", value_name = "FILE")]
+        overlays: Vec<PathBuf>,
+    },
+    /// List pack themes and validate each against the type registry.
+    Themes,
+    /// Evaluate spelling correction against expected headwords.
+    Eval {
+        #[command(subcommand)]
+        command: EvalCommand,
+    },
     /// Time queries after warming up on the first 100 lines.
     Bench {
         #[arg(value_enum)]
@@ -69,4 +90,12 @@ pub enum BenchKind {
     Suggest,
     Search,
     Entry,
+    Correct,
+    Render,
+}
+
+#[derive(Subcommand)]
+pub enum EvalCommand {
+    /// Read typo<TAB>expected_headword cases and measure top-1/top-5 recall.
+    Correct { cases_file: PathBuf },
 }

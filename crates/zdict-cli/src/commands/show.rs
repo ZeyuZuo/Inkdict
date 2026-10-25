@@ -3,12 +3,22 @@
 use std::io::Write;
 
 use anyhow::{Context, Result};
-use zdict_core::{Child, Error, Node, Pack};
+use zdict_core::{Child, Entry, Error, Node, Pack};
 
 use super::print_json;
 
 pub fn run(pack: &Pack, key_or_word: &str, json: bool, out: &mut impl Write) -> Result<()> {
-    let entry = match pack.entry(key_or_word) {
+    let entry = resolve(pack, key_or_word)?;
+    if json {
+        let value = serde_json::from_str(&pack.entry_json(&entry.key)?)?;
+        print_json(out, &value)
+    } else {
+        outline(&entry.root, 0, out)
+    }
+}
+
+pub(super) fn resolve(pack: &Pack, key_or_word: &str) -> Result<Entry> {
+    Ok(match pack.entry(key_or_word) {
         Ok(entry) => entry,
         Err(Error::MissingEntry(_)) => {
             let hit = pack
@@ -19,13 +29,7 @@ pub fn run(pack: &Pack, key_or_word: &str, json: bool, out: &mut impl Write) -> 
             pack.entry(&hit.entry)?
         }
         Err(error) => return Err(error.into()),
-    };
-    if json {
-        let value = serde_json::from_str(&pack.entry_json(&entry.key)?)?;
-        print_json(out, &value)
-    } else {
-        outline(&entry.root, 0, out)
-    }
+    })
 }
 
 fn outline(node: &Node, depth: usize, out: &mut impl Write) -> Result<()> {
