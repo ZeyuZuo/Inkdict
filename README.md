@@ -22,6 +22,8 @@ apps/
   desktop/          桌面端（Tauri 2，复用 Web 前端）
   android/          Android（Kotlin + Jetpack Compose）
 server/             Web 版的后端（Cloudflare Worker）
+scripts/
+  sync-oxdata.sh    从 OxDic 复制已打包的 Oxford 数据到 oxdata/（不入库）
 docs/
   architecture.md   各部分怎么配合，核心如何被各端使用
   roadmap.md        开发阶段与退出条件
@@ -30,7 +32,8 @@ docs/
 ## 开发
 
 ```bash
-cargo test            # Rust 核心
+scripts/sync-oxdata.sh   # 复制 Oxford 测试数据到 oxdata/（需要本机有 OxDic 仓库）
+cargo test               # Rust 核心
 ```
 
 需要 Rust 1.95（`rust-toolchain.toml` 会自动选择）。各应用的构建方式见各自目录的 README，应用开始开发时补上。

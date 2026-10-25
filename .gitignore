@@ -31,3 +31,6 @@ settings.json
 .vscode/
 *.iml
 .DS_Store
+
+# Built dictionary data copied from OxDic for local tests (scripts/sync-oxdata.sh)
+oxdata/
