@@ -1,5 +1,7 @@
 //! Anchors and link targets (spec/pack-v0.md §3.3, spec/v0.md §6).
 
+use serde::Serialize;
+
 use crate::error::{Error, Result};
 use crate::node::{Attr, Child, Entry, Node};
 use crate::pack::Pack;
@@ -53,16 +55,44 @@ pub enum Focus {
     WordFamily,
 }
 
+/// What a `link`-role node points at, as written in the content.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Link {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchor_type: Option<String>,
+    /// The node's text, for the lookup fallback.
+    pub text: String,
+}
+
+impl Link {
+    pub fn of(node: &Node) -> Self {
+        let attr = |name| node.attr(name).and_then(Attr::as_str).map(String::from);
+        Link {
+            entry: attr("entry"),
+            anchor: attr("anchor"),
+            anchor_type: attr("anchor_type"),
+            text: display(&plain(node)),
+        }
+    }
+}
+
 impl Pack {
     /// Target of a `link`-role node (`target`, `xword`) inside `current`.
-    ///
-    /// Spec v0 §6, falling back in order when a target is not in the pack:
-    /// entry + anchor → that entry (its word family for `wfg`) → the anchor
-    /// in the current entry → a lookup of the node's text.
     pub fn resolve_link(&self, current: &Entry, node: &Node) -> Result<LinkTarget> {
-        let attr = |name| node.attr(name).and_then(Attr::as_str);
-        let anchor = attr("anchor");
-        if let Some(key) = attr("entry") {
+        self.resolve(current, &Link::of(node))
+    }
+
+    /// Where `link` leads from `current` (spec v0 §6), falling back in order
+    /// when a target is not in the pack: entry + anchor → that entry (its
+    /// word family for `wfg`) → the anchor in the current entry → a lookup
+    /// of the link's text.
+    pub fn resolve(&self, current: &Entry, link: &Link) -> Result<LinkTarget> {
+        let anchor = link.anchor.as_deref();
+        if let Some(key) = link.entry.as_deref() {
             let target = if key == current.key {
                 Some(current.clone())
             } else {
@@ -75,7 +105,7 @@ impl Pack {
             if let Some(target) = target {
                 let focus = match anchor.and_then(|id| target.anchor_number(id)) {
                     Some(number) => Focus::Anchor(number),
-                    None if attr("anchor_type") == Some("wfg") => Focus::WordFamily,
+                    None if link.anchor_type.as_deref() == Some("wfg") => Focus::WordFamily,
                     None => Focus::Top,
                 };
                 return Ok(LinkTarget::Entry {
@@ -90,7 +120,7 @@ impl Pack {
                 focus: Focus::Anchor(number),
             });
         }
-        Ok(LinkTarget::Lookup(display(&plain(node))))
+        Ok(LinkTarget::Lookup(link.text.clone()))
     }
 }
 

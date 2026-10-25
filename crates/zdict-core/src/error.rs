@@ -23,6 +23,10 @@ pub enum Error {
     #[error("file not in pack: {0}")]
     MissingFile(String),
 
+    /// A file in `files` (type registry, theme) is not valid.
+    #[error("{name}: {reason}")]
+    BadFile { name: String, reason: String },
+
     /// No entry with this key (or row id).
     #[error("entry not in pack: {0}")]
     MissingEntry(String),

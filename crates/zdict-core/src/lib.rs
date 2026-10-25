@@ -10,18 +10,26 @@ mod lookup;
 mod meta;
 mod node;
 mod pack;
+mod registry;
+mod render;
 mod resource;
 mod search;
 #[cfg(test)]
 mod test_pack;
 pub mod text;
+pub mod theme;
 
 pub use error::{Error, MetaProblem, Result};
-pub use link::{Focus, LinkTarget, plain};
+pub use link::{Focus, Link, LinkTarget, plain};
 pub use lookup::Suggestion;
 pub use meta::Meta;
 pub use node::{Attr, Child, Entry, Node};
 pub use pack::Pack;
+pub use registry::{Kind, Registry, Role, TypeSpec};
+pub use render::{
+    Anchor, Audio, Collapse, Generated, Icon, Image, Marker, RenderChild, RenderNode, Renderer,
+    TextStyle, interpolate,
+};
 pub use resource::encode_uri_component;
 pub use search::{Column, Hit, split_rowid};
 
