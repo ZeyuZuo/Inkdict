@@ -25,13 +25,13 @@ pub use link::{Focus, Link, LinkTarget, plain};
 pub use meta::Meta;
 pub use node::{Attr, Child, Entry, Node};
 pub use pack::Pack;
-pub use registry::{Kind, Registry, Role, TypeSpec};
+pub use registry::{IndexKind, Kind, Registry, Role, TypeSpec};
 pub use render::{
     Anchor, Audio, Collapse, Font, Generated, Icon, Image, Marker, RenderChild, RenderNode,
     Renderer, Tab, TextStyle, interpolate,
 };
 pub use resource::encode_uri_component;
-pub use words::{Group, IndexKind, Word};
+pub use words::{Group, Word};
 
 /// `PRAGMA application_id` of a pack: ASCII `ZDPK`.
 pub const APPLICATION_ID: u32 = 0x5A44_504B;

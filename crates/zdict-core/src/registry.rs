@@ -2,6 +2,8 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use serde::Serialize;
+
 use crate::error::{Error, Result};
 use crate::pack::Pack;
 
@@ -37,6 +39,43 @@ pub enum Role {
     Choice,
 }
 
+/// Index kind of an `index` type and of its lookup rows (spec/v1.md §3.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IndexKind {
+    Headword,
+    Variant,
+    Inflection,
+    Phrase,
+    Reading,
+    Hidden,
+}
+
+impl IndexKind {
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "headword" => Some(IndexKind::Headword),
+            "variant" => Some(IndexKind::Variant),
+            "inflection" => Some(IndexKind::Inflection),
+            "phrase" => Some(IndexKind::Phrase),
+            "reading" => Some(IndexKind::Reading),
+            "hidden" => Some(IndexKind::Hidden),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            IndexKind::Headword => "headword",
+            IndexKind::Variant => "variant",
+            IndexKind::Inflection => "inflection",
+            IndexKind::Phrase => "phrase",
+            IndexKind::Reading => "reading",
+            IndexKind::Hidden => "hidden",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TypeSpec {
     pub kind: Kind,
@@ -46,7 +85,7 @@ pub struct TypeSpec {
     pub attrs: BTreeMap<String, String>,
     pub roles: Vec<Role>,
     /// Lookup kind, present exactly when this type has the index role.
-    pub index: Option<String>,
+    pub index: Option<IndexKind>,
     /// Resource attribute names, in declaration order.
     pub res_attrs: Vec<String>,
 }
@@ -117,14 +156,9 @@ impl Registry {
                 })
                 .collect::<Result<_>>()?;
             let index = spec.get("index").and_then(toml::Value::as_str);
+            let kind_of_index = index.and_then(IndexKind::parse);
             if roles.contains(&Role::Index) != spec.contains_key("index")
-                || (spec.contains_key("index")
-                    && !matches!(
-                        index,
-                        Some(
-                            "headword" | "variant" | "inflection" | "phrase" | "reading" | "hidden"
-                        )
-                    ))
+                || (spec.contains_key("index") && kind_of_index.is_none())
             {
                 return Err(bad_types(format!(
                     "{name}: an index role needs an index kind, and only then"
@@ -137,7 +171,7 @@ impl Registry {
                     children,
                     attrs,
                     roles,
-                    index: index.map(String::from),
+                    index: kind_of_index,
                     res_attrs,
                 },
             );
@@ -166,8 +200,8 @@ impl Registry {
     }
 
     /// Lookup kind declared by an index-role type.
-    pub fn index_kind(&self, kind: &str) -> Option<&str> {
-        self.get(kind).and_then(|spec| spec.index.as_deref())
+    pub fn index_kind(&self, kind: &str) -> Option<IndexKind> {
+        self.get(kind).and_then(|spec| spec.index)
     }
 
     /// Resource attributes in declaration order; unknown types have none.
@@ -178,6 +212,18 @@ impl Registry {
     /// Behaviour roles; unknown types have none.
     pub fn roles(&self, kind: &str) -> &[Role] {
         self.get(kind).map_or(&[], |spec| &spec.roles)
+    }
+
+    /// Names of the types with this role, sorted.
+    pub fn types_with_role(&self, role: Role) -> Vec<&str> {
+        let mut names: Vec<_> = self
+            .types
+            .iter()
+            .filter(|(_, spec)| spec.roles.contains(&role))
+            .map(|(name, _)| name.as_str())
+            .collect();
+        names.sort_unstable();
+        names
     }
 
     pub fn has_role(&self, kind: &str, role: Role) -> bool {
@@ -342,7 +388,9 @@ attrs = { z_sound = "res?", a_picture = "res", n = "int", flag = "bool?", e = "e
 "#,
         )
         .unwrap();
-        assert_eq!(registry.index_kind("word"), Some("reading"));
+        assert_eq!(registry.index_kind("word"), Some(IndexKind::Reading));
+        assert_eq!(registry.types_with_role(Role::Choice), ["word"]);
+        assert!(registry.types_with_role(Role::Link).is_empty());
         assert_eq!(registry.res_attrs("word"), ["z_sound", "a_picture"]);
         assert_eq!(
             registry.roles("word"),

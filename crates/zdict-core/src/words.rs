@@ -15,44 +15,10 @@ use serde::Serialize;
 use crate::error::{Error, Result};
 use crate::fuzzy::{FuzzyIndex, letter_difference, max_distance};
 use crate::pack::Pack;
+use crate::registry::IndexKind;
 use crate::text::norm;
 
-/// Index kind of a lookup row (spec/v1.md §3.1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum IndexKind {
-    Headword,
-    Variant,
-    Inflection,
-    Phrase,
-    Reading,
-    Hidden,
-}
-
 impl IndexKind {
-    pub fn parse(name: &str) -> Option<Self> {
-        match name {
-            "headword" => Some(IndexKind::Headword),
-            "variant" => Some(IndexKind::Variant),
-            "inflection" => Some(IndexKind::Inflection),
-            "phrase" => Some(IndexKind::Phrase),
-            "reading" => Some(IndexKind::Reading),
-            "hidden" => Some(IndexKind::Hidden),
-            _ => None,
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            IndexKind::Headword => "headword",
-            IndexKind::Variant => "variant",
-            IndexKind::Inflection => "inflection",
-            IndexKind::Phrase => "phrase",
-            IndexKind::Reading => "reading",
-            IndexKind::Hidden => "hidden",
-        }
-    }
-
     /// Rows that show as the entry's headword instead of their own form.
     fn shows_headword(self) -> bool {
         matches!(self, IndexKind::Reading | IndexKind::Hidden)
