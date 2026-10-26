@@ -9,6 +9,7 @@ the outputs contain dictionary text).
 
 The default OxDic path is the parent directory of this repository.
 """
+from collections import Counter
 import hashlib
 import json
 from dataclasses import asdict
@@ -29,6 +30,9 @@ EDGES = [
     'Ა', 'ꭰ', 'Ꭰ', 'ﬆ', 'ŉ', 'ǰ', 'ΐ', 'ẞ', 'K', 'Å', 'ë́', '\t a \n',
     '\u001c', '\u0085x', 'Ⓐ', '½', '²', 'a·b', 'ab‧c', 'pull↔up', 'ˌbʊk',
 ]
+# Words of other scripts: fold-1 folds some marks and must keep others.
+SCRIPTS = ['كِتَاب', 'שָׁלוֹם', 'Ἑλλάς', 'Ёлка', 'किताब', 'कि', 'が', 'ｶﾞ', 'ภาษาไทย', '한국어', 'Tiếng Việt',
+           'ĳ', 'Æsir', 'ǅemal']
 FAILED = object()
 DROPPED = []
 
@@ -43,7 +47,7 @@ def reference(name, value, function, *args):
 
 
 def pack_golden(pack):
-    """Identification, meta and embedded files (spec/pack-v0.md §1, §2.1, §2.2)."""
+    """Identification, meta and embedded files (spec/pack-v1.md §2)."""
     db = pack.db
     files = {name: {'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()}
              for name, body in db.execute('SELECT name, body FROM files ORDER BY name')}
@@ -51,25 +55,25 @@ def pack_golden(pack):
         'application_id': db.execute('PRAGMA application_id').fetchone()[0],
         'user_version': db.execute('PRAGMA user_version').fetchone()[0],
         'meta': pack.meta,
-        'fts_langs': pack.langs,
         'files': files,
         'entry_rows': db.execute('SELECT count(*) FROM entries').fetchone()[0],
+        'summary_rows': db.execute('SELECT count(*) FROM summaries').fetchone()[0],
+        'resource_rows': db.execute('SELECT count(*) FROM resources').fetchone()[0],
     }
 
 
 def chars_golden(text):
-    """Python Unicode character classes and changed single-character keys."""
-    classes = ('assigned', 'isspace', 'isalnum', 'word', 'combining')
+    """Python Unicode character classes the lookup keys use (spec/pack-v1.md §3.2)
+    and single characters whose key differs from the character itself."""
+    classes = ('assigned', 'isspace', 'nonspacing', 'kept')
     data = {'unicode_version': unicodedata.unidata_version,
-            **{name: [] for name in classes}, 'norm_single': []}
-    word = re.compile(r'\w').fullmatch
+            **{name: [] for name in classes}, 'norm_single': [], 'exact_single': []}
     for cp in range(0x110000):
         char = chr(cp)
         category = unicodedata.category(char)
         if category == 'Cs':
             continue
-        flags = (category != 'Cn', char.isspace(), char.isalnum(),
-                 bool(word(char)), bool(unicodedata.combining(char)))
+        flags = (category != 'Cn', char.isspace(), category == 'Mn', category[0] in 'LMN')
         for name, flag in zip(classes, flags):
             if flag:
                 ranges = data[name]
@@ -78,38 +82,60 @@ def chars_golden(text):
                 else:
                     ranges.append([cp, cp])
         if flags[0]:
-            normalized = reference('chars.json', cp, text.norm, char)
-            if normalized is not FAILED and normalized != char:
-                data['norm_single'].append([cp, normalized])
+            for scheme, name in ((text.FOLD, 'norm_single'), (text.EXACT, 'exact_single')):
+                normalized = reference('chars.json', [cp, scheme], text.norm, char, scheme)
+                if normalized is not FAILED and normalized != char:
+                    data[name].append([cp, normalized])
     return data
 
 
 def norm_golden(forms, headwords, text):
-    """Keys for every dictionary form and normalization edge case."""
+    """fold-1 and exact-1 keys for every dictionary form and edge case."""
     cases = []
-    for value in sorted(set(forms) | set(headwords) | set(EDGES)):
-        normalized = reference('norm.json', value, text.norm, value)
-        if normalized is not FAILED:
-            cases.append([value, normalized])
+    for value in sorted(set(forms) | set(headwords) | set(EDGES) | set(SCRIPTS)):
+        fold = reference('norm.json', value, text.norm, value, text.FOLD)
+        exact = reference('norm.json', value, text.norm, value, text.EXACT)
+        if fold is not FAILED and exact is not FAILED:
+            cases.append([value, fold, exact])
     return cases
 
 
-def suggest_golden(pack, headwords, forms, rng):
-    """Prefixes, exact forms, uppercase forms and varied result limits."""
+def typo(word, rng):
+    """One random edit: swap, delete, insert or replace a letter."""
+    letters = 'abcdefghijklmnopqrstuvwxyz'
+    i = rng.randrange(len(word))
+    edit = rng.choice(('swap', 'delete', 'insert', 'replace') if len(word) > 1 else ('insert', 'replace'))
+    if edit == 'swap':
+        i = min(i, len(word) - 2)
+        return word[:i] + word[i + 1] + word[i] + word[i + 2:]
+    if edit == 'delete':
+        return word[:i] + word[i + 1:]
+    if edit == 'insert':
+        return word[:i] + rng.choice(letters) + word[i:]
+    return word[:i] + rng.choice(letters) + word[i + 1:]
+
+
+def words_golden(pack, headwords, forms, rng):
+    """The word list (spec/pack-v1.md §5): prefixes, exact and uppercase forms,
+    typing errors for the close group, homographs and varied limits."""
     queries = [(value, 20) for value in EDGES]
     for word in rng.sample(headwords, 1000):
         queries.append((word[:rng.randint(1, len(word))], 20))
     selected = rng.sample(forms, 500)
     queries.extend((form, 20) for form in selected)
     queries.extend((form.upper(), 20) for form in rng.sample(selected, 200))
-    queries.extend((word, limit) for word in ('a', 'go', 'went', 'apple')
+    plain = [word for word in headwords if word.isalpha() and word.isascii() and len(word) >= 3]
+    queries.extend((typo(word.lower(), rng), 20) for word in rng.sample(plain, 300))
+    queries.extend((word, limit) for word in ('a', 'go', 'went', 'apple', 'lead', 'left', 'book', 'harboured')
                    for limit in (1, 5, 50))
     cases = []
     for query, limit in queries:
-        results = reference('suggest.json', [query, limit], pack.suggest, query, limit)
+        results = reference('words.json', [query, limit], pack.words, query, limit)
         if results is not FAILED:
             cases.append({'query': query, 'limit': limit,
                           'results': [asdict(result) for result in results]})
+    groups = Counter(result['group'] for case in cases for result in case['results'])
+    print(f'  words: {len(cases):,} queries; rows by group: {dict(groups)}')
     return {'cases': cases}
 
 
@@ -122,51 +148,17 @@ def nodes(node, lang=''):
             yield from nodes(child, lang)
 
 
-def source_inputs(text):
-    """Read Chinese definition runs and all resource attributes in one pass."""
-    chinese, refs = {}, set()
-    cjk = re.compile(r'[\u3400-\u9fff]+')
+def resource_refs():
+    """Every Oxford resource reference in the entries."""
+    refs = set()
     resource = re.compile(r'^(wa|xa|img):')
     with (OXDATA / 'entries.jsonl').open(encoding='utf-8') as source:
         for line in source:
-            entry = json.loads(line)
-            runs = set()
-            for node, lang in nodes(entry):
+            for node, _ in nodes(json.loads(line)):
                 for value in node.get('attrs', {}).values():
                     if isinstance(value, str) and resource.match(value):
                         refs.add(value)
-                if node.get('type') == 'definition' and lang.startswith('zh'):
-                    runs.update(cjk.findall(text.plain(node)))
-            if runs:
-                chinese[entry['id']] = sorted(runs)
-    return chinese, sorted(refs)
-
-
-def search_golden(pack, headwords, chinese, text, rng):
-    """English terms, Chinese snippets, edge queries and column filters."""
-    queries = rng.sample([word for word in headwords if word.isalpha()], 300)
-    for key in rng.sample(sorted(chinese), 200):
-        run = rng.choice(chinese[key])
-        length = rng.randint(1, min(3, len(run)))
-        start = rng.randint(0, len(run) - length)
-        queries.append(run[start:start + length])
-    queries.extend(['', 'apple pie', "don't", 'Café', '苹果 apple', '的', 'run*',
-                    'AND', 'NOT', '"quoted"', 'e-mail', '苹果', '123', 'ˈæpl', '  '])
-    inputs = [(query, None) for query in queries]
-    inputs.extend((query, 'example') for query in queries[:100])
-    inputs.extend((query, 'text') for query in queries[100:150])
-    cases = []
-    for query, column in inputs:
-        value = [query, column, 20]
-        fts_query = reference('search.json', value, text.fts_query, query)
-        if fts_query is FAILED:
-            continue
-        results = reference('search.json', value, pack.search, query, 20, column)
-        if results is not FAILED:
-            cases.append({'query': query, 'column': column, 'limit': 20,
-                          'fts_query': fts_query,
-                          'results': [asdict(result) for result in results]})
-    return {'cases': cases}
+    return sorted(refs)
 
 
 def resources_golden(pack, refs, rng):
@@ -183,8 +175,9 @@ def resources_golden(pack, refs, rng):
     cases = []
     for ref in sorted(selected):
         urls = reference('resources.json', ref, pack.resource_urls, ref)
-        if urls is not FAILED:
-            cases.append([ref, urls])
+        stored = reference('resources.json', ref, pack.resource, ref)
+        if urls is not FAILED and stored is not FAILED:
+            cases.append([ref, urls, stored is not None])
     return cases
 
 
@@ -221,10 +214,11 @@ def html_golden(pack, keys, registry, theme, renderer):
     def special(node, path):
         if not isinstance(node, dict):
             return False
-        if node['type'] in ('box_ref', 'image'):
+        if node['type'] == 'image':
             return True
         path = path + [renderer.frame(node, path)]
-        if theme.own_style(path).get('collapse', 'none') != 'none':
+        style = theme.own_style(path)
+        if style.get('collapse', 'none') != 'none' or style.get('tabs'):
             return True
         return any(special(child, path) for child in node.get('children', []))
 
@@ -279,12 +273,10 @@ def main():
         headwords = [row[0] for row in pack.db.execute('SELECT headword FROM entries ORDER BY headword, key')]
         forms = [row[0] for row in pack.db.execute('SELECT DISTINCT form FROM lookup ORDER BY form')]
         keys = [row[0] for row in pack.db.execute('SELECT key FROM entries ORDER BY key')]
-        chinese, refs = source_inputs(text)
         write('chars.json', chars_golden(text))
         write('norm.json', norm_golden(forms, headwords, text))
-        write('suggest.json', suggest_golden(pack, headwords, forms, rng))
-        write('search.json', search_golden(pack, headwords, chinese, text, rng))
-        write('resources.json', resources_golden(pack, refs, rng))
+        write('words.json', words_golden(pack, headwords, forms, rng))
+        write('resources.json', resources_golden(pack, resource_refs(), rng))
         write('anchors.json', anchors_golden(pack, keys, anchor_node, rng))
         types_path = OXDATA / 'pack-inputs/types.toml'
         theme_path = OXDATA / 'pack-inputs/themes/default.toml'
