@@ -239,8 +239,8 @@ pub struct Renderer<'a> {
 }
 
 /// Per-entry anchor numbers and labels already moved into a tab bar.
-struct Context<'e> {
-    anchors: HashMap<&'e str, u32>,
+struct Context {
+    anchors: HashMap<*const Node, u32>,
     hidden_labels: RefCell<HashSet<*const Node>>,
 }
 
@@ -257,11 +257,13 @@ impl<'a> Renderer<'a> {
 
     pub fn render(&self, entry: &Entry) -> RenderNode {
         let root = &entry.root;
+        // By node, not by id: with duplicate ids each node keeps its own
+        // number, the one lookup rows and links use (spec/pack-v1.md §3.4).
         let anchors = entry
             .anchors()
             .into_iter()
             .enumerate()
-            .filter_map(|(number, node)| Some((node.id.as_deref()?, number as u32)))
+            .map(|(number, node)| (std::ptr::from_ref(node), number as u32))
             .collect();
         let context = Context {
             anchors,
@@ -284,7 +286,7 @@ impl<'a> Renderer<'a> {
         self.themes.own_style(&frames, pseudo)
     }
 
-    fn node<'e>(&self, cx: &Context<'e>, node: &'e Node, path: &Path<'e>) -> RenderNode {
+    fn node<'e>(&self, cx: &Context, node: &'e Node, path: &Path<'e>) -> RenderNode {
         let parent_text = path
             .last()
             .map(|(_, text)| text.clone())
@@ -306,13 +308,37 @@ impl<'a> Renderer<'a> {
         if has(Role::Anchor)
             && let Some(id) = node.id.as_deref()
         {
-            let number = cx.anchors.get(id).copied().unwrap_or_default();
+            let number = cx
+                .anchors
+                .get(&std::ptr::from_ref(node))
+                .copied()
+                .unwrap_or_default();
             rendered.anchor = Some(Anchor {
                 id: id.to_owned(),
                 number,
             });
         }
-        if !style.flag("hide_text") {
+        if let Some(state) = style.str("collapse").filter(|state| *state != "none") {
+            // The first child, string or node, stays visible (spec v1 §4.2);
+            // a hidden first node leaves no summary. The reference renderer
+            // takes the first node and drops a leading string instead.
+            let (summary, rest) = match &node.text {
+                Some(own) => (Some(RenderChild::Text(own.clone())), Vec::new()),
+                None => {
+                    let split = node.children.len().min(1);
+                    let first = self.children(cx, &node.children[..split], &path);
+                    (
+                        first.into_iter().next(),
+                        self.children(cx, &node.children[split..], &path),
+                    )
+                }
+            };
+            rendered.children = rest;
+            rendered.collapse = Some(Collapse {
+                open: state == "open",
+                summary: summary.map(Box::new),
+            });
+        } else if !style.flag("hide_text") {
             rendered.children = match &node.text {
                 Some(own) => vec![RenderChild::Text(own.clone())],
                 None => self.children(cx, &node.children, &path),
@@ -362,40 +388,24 @@ impl<'a> Renderer<'a> {
                     .str("icon")
                     .filter(|n| *n != "none")
                     .map(String::from),
-                width: style.get("indent").cloned().unwrap_or(Value::Float(1.2)),
+                // Only a number: the width ends up inside CSS.
+                width: style
+                    .get("indent")
+                    .filter(|indent| indent.as_f64().is_some())
+                    .cloned()
+                    .unwrap_or(Value::Float(1.2)),
                 text_style: text.inherit(&marker_style, self.themes, lang),
                 style: marker_style,
             });
         }
         rendered.title = self.generated(&path, &text, Pseudo::Title, style.str("title"), attrs);
-        if let Some(state) = style.str("collapse").filter(|state| *state != "none") {
-            // The first child, string or node, stays visible (spec v1 §4.2);
-            // a hidden first node leaves no summary. The reference renderer
-            // takes the first node and drops a leading string instead.
-            let (summary, rest) = match &node.text {
-                Some(own) => (Some(RenderChild::Text(own.clone())), Vec::new()),
-                None => {
-                    let split = node.children.len().min(1);
-                    let first = self.children(cx, &node.children[..split], &path);
-                    (
-                        first.into_iter().next(),
-                        self.children(cx, &node.children[split..], &path),
-                    )
-                }
-            };
-            rendered.children = rest;
-            rendered.collapse = Some(Collapse {
-                open: state == "open",
-                summary: summary.map(Box::new),
-            });
-        }
         rendered.style = style;
         rendered
     }
 
     fn children<'e>(
         &self,
-        cx: &Context<'e>,
+        cx: &Context,
         children: &'e [Child],
         path: &Path<'e>,
     ) -> Vec<RenderChild> {
@@ -448,7 +458,7 @@ impl<'a> Renderer<'a> {
 
     fn tab_group<'e>(
         &self,
-        cx: &Context<'e>,
+        cx: &Context,
         tabs: &mut Vec<(&'e Node, Style)>,
         path: &Path<'e>,
         rendered: &mut Vec<RenderChild>,
@@ -833,6 +843,50 @@ font = "ui"
             node(&root.children[5]).children,
             [RenderChild::Text("unknown".into())]
         );
+    }
+
+    #[test]
+    fn nested_collapses_render_each_node_once() {
+        let mut children = String::from(r#"{"type":"body","text":"leaf"}"#);
+        for _ in 0..24 {
+            children = format!(r#"{{"type":"panel","children":[{children},{{"type":"body"}}]}}"#);
+        }
+        let started = std::time::Instant::now();
+        render("[style.panel]\ncollapse = \"closed\"", &children);
+        assert!(started.elapsed().as_millis() < 500, "24 nested collapses");
+    }
+
+    #[test]
+    fn a_collapse_keeps_the_labels_of_tabs_it_splits() {
+        let theme = format!("{TABS}\n[style.entry]\ncollapse = \"open\"");
+        let root = render(&theme, TWO);
+        let summary = root.collapse.as_ref().unwrap().summary.as_deref().unwrap();
+        let first_head = node(&node(summary).children[0]);
+        assert_eq!(
+            node(&first_head.children[0]).children,
+            [RenderChild::Text("Noun".into())]
+        );
+        // The blank string between the panels stays with the rest.
+        assert_eq!(root.children[0], RenderChild::Text(" ".into()));
+        let second_head = node(&node(&root.children[1]).children[0]);
+        assert_eq!(
+            node(&second_head.children[0]).children,
+            [RenderChild::Text("Verb".into())]
+        );
+    }
+
+    #[test]
+    fn duplicate_ids_keep_their_document_order_numbers() {
+        let root = render(
+            "",
+            r#"{"type":"panel","id":"x"},{"type":"panel","id":"y"},{"type":"panel","id":"x"}"#,
+        );
+        let numbers: Vec<_> = root
+            .children
+            .iter()
+            .map(|child| node(child).anchor.as_ref().unwrap().number)
+            .collect();
+        assert_eq!(numbers, [1, 2, 3]);
     }
 
     #[test]

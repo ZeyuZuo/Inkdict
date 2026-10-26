@@ -313,7 +313,20 @@ impl Writer {
         if node.marker.is_some() {
             css.push_str(";position:relative");
         }
-        let class = format!("dx-{}", escape(&node.kind));
+        // Content may use types the registry does not know; a name that is
+        // not a token must not add classes of its own (`x dx-tab`).
+        let kind: String = node
+            .kind
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let class = format!("dx-{kind}");
         if let Some(collapse) = &node.collapse {
             let state = if collapse.open { " open" } else { "" };
             let summary = collapse
@@ -563,8 +576,9 @@ mod tests {
         let class = style_class("font-weight:700");
         let sheet = format!("<style>.{class}{{font-weight:700}}</style>");
         assert!(html.starts_with(&sheet), "{html}");
+        // The type name keeps only token characters: no extra class.
         assert!(
-            html.contains(&format!("class=\"dx-x&quot;&gt;&lt;script&gt; {class}\"")),
+            html.contains(&format!("class=\"dx-x___script_ {class}\"")),
             "{html}"
         );
     }

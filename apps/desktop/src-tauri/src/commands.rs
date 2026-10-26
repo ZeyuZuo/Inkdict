@@ -52,16 +52,19 @@ pub fn settings(state: State<'_, AppState>) -> Result<Settings> {
     })
 }
 
-/// Apply and remember new settings; later `entry` calls render with them.
+/// Apply and then remember new settings; later `entry` calls render with
+/// them. Settings that fail to apply are not saved.
 #[tauri::command]
 pub fn set_settings(state: State<'_, AppState>, settings: Settings) -> Result<Settings> {
+    {
+        let mut guard = state.dictionary.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(dictionary) = guard.as_mut() {
+            dictionary.set_settings(settings.clone())?;
+        }
+    }
     let mut config = Config::load(&state.config_path);
     config.settings = settings.clone();
     config.save(&state.config_path)?;
-    let mut guard = state.dictionary.write().unwrap_or_else(|e| e.into_inner());
-    if let Some(dictionary) = guard.as_mut() {
-        dictionary.set_settings(settings.clone());
-    }
     Ok(settings)
 }
 

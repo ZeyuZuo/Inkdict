@@ -111,6 +111,11 @@ impl Registry {
         let groups = table(&data, "groups")?;
         let mut types = HashMap::new();
         for (name, spec) in table(&data, "types")? {
+            if !is_type_name(name) {
+                return Err(bad_types(format!(
+                    "type name {name:?}: only a-z and _ (the names selectors can write)"
+                )));
+            }
             let spec = spec
                 .as_table()
                 .ok_or_else(|| bad_types(format!("{name} is not a table")))?;
@@ -120,8 +125,16 @@ impl Registry {
                 other => return Err(bad_types(format!("{name}: kind {other:?}"))),
             };
             let mut children = HashSet::new();
+            let mut done = HashSet::new();
             for child in strings(spec, "children", name)? {
-                expand(groups, &child, name, &mut Vec::new(), &mut children)?;
+                expand(
+                    groups,
+                    &child,
+                    name,
+                    &mut Vec::new(),
+                    &mut done,
+                    &mut children,
+                )?;
             }
             let mut attrs = BTreeMap::new();
             let mut res_attrs = Vec::new();
@@ -246,18 +259,29 @@ impl Pack {
     }
 }
 
+/// Type names: what a theme selector can name (spec/v1.md §3).
+fn is_type_name(name: &str) -> bool {
+    !name.is_empty() && name.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+}
+
 /// Add a child type, or every member of a `@group` (groups may name groups).
+/// `done` holds the groups already added for this type: shared groups are
+/// expanded once, so nesting cannot blow up.
 fn expand(
     groups: &toml::Table,
     child: &str,
     owner: &str,
     open: &mut Vec<String>,
+    done: &mut HashSet<String>,
     children: &mut HashSet<String>,
 ) -> Result<()> {
     let Some(group) = child.strip_prefix('@') else {
         children.insert(child.to_owned());
         return Ok(());
     };
+    if done.contains(group) {
+        return Ok(());
+    }
     if open.iter().any(|name| name == group) {
         return Err(bad_types(format!(
             "{owner}: group @{group} contains itself"
@@ -272,9 +296,10 @@ fn expand(
         let member = member
             .as_str()
             .ok_or_else(|| bad_types(format!("group @{group} has a non-string member")))?;
-        expand(groups, member, owner, open, children)?;
+        expand(groups, member, owner, open, done, children)?;
     }
     open.pop();
+    done.insert(group.to_owned());
     Ok(())
 }
 
@@ -371,6 +396,38 @@ children = ["#text"]
             children,
             &HashSet::from(["#text".to_owned(), "b".to_owned()])
         );
+    }
+
+    #[test]
+    fn shared_groups_expand_once() {
+        let mut text = String::from(
+            "[meta]\nformat = \"zdict-types\"\nversion = 1\n[groups]\ng_ = [\"#text\"]\n",
+        );
+        let mut name = String::from("g_");
+        for _ in 0..40 {
+            let next = format!("{name}a");
+            text.push_str(&format!("{next} = [\"@{name}\", \"@{name}\"]\n"));
+            name = next;
+        }
+        text.push_str(&format!(
+            "[types.a]\nkind = \"block\"\nchildren = [\"@{name}\"]\n"
+        ));
+        let started = std::time::Instant::now();
+        let registry = Registry::parse(&text).unwrap();
+        assert!(started.elapsed().as_secs() < 1, "40 nested shared groups");
+        assert_eq!(
+            registry.get("a").unwrap().children,
+            HashSet::from(["#text".to_owned()])
+        );
+    }
+
+    #[test]
+    fn type_names_are_what_selectors_can_name() {
+        let prefix = "[meta]\nformat = \"zdict-types\"\nversion = 1\n";
+        for name in ["pron2", "Pron", "\"pron-list\"", "\"a b\"", "\"*\""] {
+            let text = format!("{prefix}[types.{name}]\nkind = \"inline\"\n");
+            assert!(Registry::parse(&text).is_err(), "{name}");
+        }
     }
 
     #[test]

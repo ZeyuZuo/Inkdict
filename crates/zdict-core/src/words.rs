@@ -124,10 +124,13 @@ pub(crate) struct WordIndex {
 }
 
 impl WordIndex {
+    /// Rows that do not fit the schema (a NULL, an unknown kind, an anchor
+    /// out of range, a missing entry) are left out: one bad row must not
+    /// take the whole word list down.
     fn build(pack: &Pack) -> Result<Self> {
         let db = pack.db();
         let mut statement = db.prepare("SELECT id, key, headword, homograph FROM entries")?;
-        let entries = statement
+        let entries: HashMap<i64, EntryInfo> = statement
             .query_map([], |row| {
                 Ok((
                     row.get(0)?,
@@ -138,7 +141,8 @@ impl WordIndex {
                     },
                 ))
             })?
-            .collect::<rusqlite::Result<HashMap<_, _>>>()?;
+            .filter_map(rusqlite::Result::ok)
+            .collect();
         let mut statement = db.prepare(
             "SELECT norm, rank, entry, anchor, form, kind FROM lookup \
              ORDER BY norm, rank, entry, anchor",
@@ -146,26 +150,22 @@ impl WordIndex {
         let mut rows = Vec::new();
         let mut found = statement.query([])?;
         while let Some(row) = found.next()? {
-            let kind: String = row.get(5)?;
-            let kind = IndexKind::parse(&kind).ok_or_else(|| Error::BadFile {
-                name: "lookup".to_owned(),
-                reason: format!("unknown index kind {kind:?}"),
-            })?;
-            let norm: String = row.get(0)?;
-            let entry = row.get(2)?;
-            // A row of a missing entry could not be opened: leave it out.
-            if !entries.contains_key(&entry) {
-                continue;
-            }
-            rows.push(Row {
-                length: norm.chars().count(),
-                norm: norm.into(),
-                rank: row.get(1)?,
-                entry,
-                anchor: row.get(3)?,
-                form: row.get::<_, String>(4)?.into(),
-                kind,
-            });
+            let read = || -> Option<Row> {
+                let kind = IndexKind::parse(&row.get::<_, String>(5).ok()?)?;
+                let norm: String = row.get(0).ok()?;
+                let entry = row.get(2).ok()?;
+                entries.contains_key(&entry).then_some(())?;
+                Some(Row {
+                    length: norm.chars().count(),
+                    norm: norm.into(),
+                    rank: row.get(1).ok()?,
+                    entry,
+                    anchor: row.get(3).ok()?,
+                    form: row.get::<_, String>(4).ok()?.into(),
+                    kind,
+                })
+            };
+            rows.extend(read());
         }
         let keys = FuzzyIndex::build(
             rows.chunk_by(|a, b| a.norm == b.norm)
@@ -359,7 +359,9 @@ impl Pack {
                 .collect();
         }
         for (entry, word) in &mut words {
-            (word.summary, word.summary_lang) = self.summary(*entry, word)?.unzip();
+            if let Some((text, lang)) = self.summary(*entry, word)? {
+                (word.summary, word.summary_lang) = (Some(text), lang);
+            }
         }
         Ok(words.into_iter().map(|(_, word)| word).collect())
     }
@@ -372,7 +374,8 @@ impl Pack {
 
     /// The row's own summary; without one, forms of the entry's word and
     /// rows at the top of the entry show the entry's (spec/pack-v1.md §5.2).
-    fn summary(&self, entry: i64, word: &Word) -> Result<Option<(String, String)>> {
+    /// A row without text counts as no summary there.
+    fn summary(&self, entry: i64, word: &Word) -> Result<Option<(String, Option<String>)>> {
         let db = self.db();
         let mut statement =
             db.prepare_cached("SELECT text, lang FROM summaries WHERE entry = ? AND anchor = ?")?;
@@ -383,22 +386,26 @@ impl Pack {
         for anchor in anchors {
             let found = statement
                 .query_row(rusqlite::params![entry, anchor], |row| {
-                    Ok((row.get(0)?, row.get(1)?))
+                    Ok((row.get::<_, Option<String>>(0)?, row.get(1).ok().flatten()))
                 })
                 .optional()?;
-            if found.is_some() {
-                return Ok(found);
+            if let Some((Some(text), lang)) = found {
+                return Ok(Some((text, lang)));
             }
         }
         Ok(None)
     }
 
+    /// Built once, by the first caller; others wait for it. A pack never
+    /// changes, so a failure is kept too instead of rebuilding per keystroke.
     fn word_index(&self) -> Result<&WordIndex> {
-        if let Some(index) = self.words.get() {
-            return Ok(index);
-        }
-        let index = WordIndex::build(self)?;
-        Ok(self.words.get_or_init(|| index))
+        self.words
+            .get_or_init(|| WordIndex::build(self).map_err(|err| err.to_string()))
+            .as_ref()
+            .map_err(|reason| Error::BadFile {
+                name: "lookup (word index)".to_owned(),
+                reason: reason.clone(),
+            })
     }
 }
 
@@ -560,6 +567,38 @@ mod tests {
         assert_eq!(
             pack.words("lead", 20).unwrap()[0].summary_lang.as_deref(),
             Some("zh-Hans")
+        );
+    }
+
+    #[test]
+    fn bad_rows_are_left_out_instead_of_failing_the_list() {
+        let test = sample();
+        test.sql(
+            "INSERT INTO lookup VALUES ('leaz', 0, 1, -1, 'leaz', 'headword');
+             INSERT INTO summaries VALUES (4, 0, 'zh-Hans', 'x');",
+        );
+        // The schema's CHECK would reject an unknown kind; a hostile pack has none.
+        test.sql(
+            "PRAGMA ignore_check_constraints = ON;
+             INSERT INTO lookup VALUES ('lebb', 0, 1, 0, 'lebb', 'bogus');",
+        );
+        let pack = test.open();
+        assert_eq!(rows(&pack, "lea", 20), rows(&sample().open(), "lea", 20));
+        assert!(
+            pack.words("leaz", 20)
+                .unwrap()
+                .iter()
+                .all(|w| w.form != "leaz")
+        );
+        assert!(
+            pack.words("lebb", 20)
+                .unwrap()
+                .iter()
+                .all(|w| w.form != "lebb")
+        );
+        assert_eq!(
+            pack.words("left", 20).unwrap()[0].summary.as_deref(),
+            Some("x")
         );
     }
 

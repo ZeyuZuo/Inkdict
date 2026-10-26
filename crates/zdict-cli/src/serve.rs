@@ -77,7 +77,7 @@ fn call(dictionary: &mut Dictionary, name: &str, args: &Value) -> Result<Value, 
         "set_settings" => {
             let settings: Settings = serde_json::from_value(args["settings"].clone())
                 .map_err(|err| AppError::new("bad_input", err.to_string()))?;
-            to_json(serde_json::to_value(dictionary.set_settings(settings)))
+            to_json(serde_json::to_value(dictionary.set_settings(settings)?))
         }
         "theme_css" => Ok(Value::String(dictionary.theme_css())),
         other => Err(AppError::new(

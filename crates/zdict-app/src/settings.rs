@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use zdict_core::theme::{Theme, ThemeStack};
 use zdict_core::{Registry, Role};
 
+use crate::{AppError, Result};
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -54,7 +56,10 @@ impl Settings {
         for (hide, role) in hidden {
             if hide {
                 for name in registry.types_with_role(role) {
-                    style.push_str(&format!("[style.\"{name}\"]\ndisplay = \"none\"\n"));
+                    // Quoted as a string key (a JSON string is a TOML basic
+                    // string), so no name can end the table header.
+                    let key = serde_json::Value::from(name);
+                    style.push_str(&format!("[style.{key}]\ndisplay = \"none\"\n"));
                 }
             }
         }
@@ -63,10 +68,10 @@ impl Settings {
 }
 
 /// The pack theme, then the settings layer.
-pub(crate) fn stack(base: &Theme, registry: &Registry, settings: &Settings) -> ThemeStack {
-    let mut stack = ThemeStack::new(base.clone());
+pub(crate) fn stack(base: &Theme, registry: &Registry, settings: &Settings) -> Result<ThemeStack> {
     let overlay = Theme::parse("settings", &settings.overlay(registry))
-        .expect("generated overlay is valid TOML");
+        .map_err(|err| AppError::new("internal", format!("settings overlay: {err}")))?;
+    let mut stack = ThemeStack::new(base.clone());
     stack.push(overlay);
-    stack
+    Ok(stack)
 }

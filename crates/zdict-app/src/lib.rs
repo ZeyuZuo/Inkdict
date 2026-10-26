@@ -118,7 +118,7 @@ impl Dictionary {
         let pack = Pack::open(path)?;
         let registry = pack.registry()?;
         let base = pack.theme(pack.meta().default_theme())?;
-        let stack = settings::stack(&base, &registry, &settings);
+        let stack = settings::stack(&base, &registry, &settings)?;
         Ok(Dictionary {
             pack,
             registry,
@@ -192,10 +192,11 @@ impl Dictionary {
         &self.settings
     }
 
-    pub fn set_settings(&mut self, settings: Settings) -> &Settings {
-        self.stack = settings::stack(&self.base, &self.registry, &settings);
+    /// Apply new settings; on an error the old ones stay in force.
+    pub fn set_settings(&mut self, settings: Settings) -> Result<&Settings> {
+        self.stack = settings::stack(&self.base, &self.registry, &settings)?;
         self.settings = settings;
-        &self.settings
+        Ok(&self.settings)
     }
 
     pub fn theme_css(&self) -> String {

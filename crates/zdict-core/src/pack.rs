@@ -21,8 +21,8 @@ pub struct Pack {
     /// Prepared once: every entry body is compressed with it (spec/pack-v1.md §2.3).
     pub(crate) dictionary: Option<DecoderDictionary<'static>>,
     pub(crate) sources: Sources,
-    /// The word list's in-memory index, built on first use.
-    pub(crate) words: OnceLock<WordIndex>,
+    /// The word list's in-memory index, built on first use (or why it failed).
+    pub(crate) words: OnceLock<std::result::Result<WordIndex, String>>,
 }
 
 impl Pack {

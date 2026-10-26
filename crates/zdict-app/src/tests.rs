@@ -30,6 +30,14 @@ fn overlay_hides_the_types_of_each_switched_off_role() {
     assert!(overlay.contains("[style.\"pron\"]\ndisplay = \"none\""));
     assert!(!overlay.contains("sense"));
     Theme::parse("settings", &overlay).unwrap();
+    assert!(
+        settings::stack(
+            &Theme::parse("t", "[meta]\nformat = \"zdict-theme\"\nversion = 1\n").unwrap(),
+            &registry,
+            &settings
+        )
+        .is_ok()
+    );
     assert_eq!(
         Switches::of(&registry),
         Switches {
@@ -106,10 +114,12 @@ fn commands_work_on_the_oxford_pack() {
     );
     assert!(view.html.contains("class=\"dx-example "));
 
-    dictionary.set_settings(Settings {
-        hide_examples: true,
-        ..Settings::default()
-    });
+    dictionary
+        .set_settings(Settings {
+            hide_examples: true,
+            ..Settings::default()
+        })
+        .unwrap();
     let hidden = dictionary.entry(&go).unwrap();
     assert!(!hidden.html.contains("class=\"dx-example "));
     assert!(hidden.html.len() < view.html.len());
