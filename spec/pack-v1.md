@@ -107,7 +107,7 @@ UTF-8，每行一个词条，即 `v1.md` §2 的一棵节点树。行的顺序�
 |---|---|
 | `id` | 按 `entries.jsonl` 的行序从 1 编号，只在本包内有效 |
 | `key` | 根节点的 `id`。交叉引用、深链、历史记录都用它 |
-| `headword` | 锚点为 0 的第一个 `headword` 种类索引节点的 `form`（§3.1）；没有时取任意位置的第一个；都没有时取 `key` |
+| `headword` | 锚点为 0 的第一个 `headword` 种类索引节点的全部文字，去掉排版标记、合并空白（§3.1）；没有时取任意位置的第一个；都没有时取 `key` |
 | `homograph` | 锚点为 0 的第一个 `homograph` 角色节点的文字，按十进制整数解析；没有时为 NULL |
 | `body` | 节点树的紧凑 JSON（UTF-8），经 zstd 压缩；有 `zstd_dict` 时用该字典 |
 
@@ -203,7 +203,9 @@ rank = class × (B + 1) + importance
 |---|---|---|---|
 | 前缀 | 总是 | `norm` 以 `k` 开头 | `norm = k` 的在前，再按 `length(norm)`、`rank`、`entry` |
 | 含有 | `k` 至少 2 个字符 | `norm` 在第 2 个字符或之后含有 `k`；只取 `headword`、`variant`、`phrase` | `rank`、`length(norm)`、`norm`、`entry` |
-| 拼写接近 | 前两组都为空，且 `k` 至少 3 个字符 | 与 `k` 的编辑距离（OSA，相邻两个字符对调算 1 处）不超过上限：`k` 为 3–4 个字符时 1，5 个起 2 | 距离；与 `k` 字符相同只是顺序不同的在前；`rank` |
+| 拼写接近 | 前两组都为空，且 `k` 至少 3 个字符 | 与 `k` 的编辑距离（OSA，相邻两个字符对调算 1 处）不超过上限：`k` 为 3–4 个字符时 1，5 个起 2 | 按检索键：距离、字母差异、该键最小的 `rank`、与 `k` 的长度差、键本身；同一个键的行按 `rank`、`entry` |
+
+字母差异是两个键的字符多重集合之差的大小：相邻对调为 0，所以 `teh` → `the` 排在替换一个字母的候选前面。
 
 前缀组走 `lookup` 主键的范围扫描（`norm >= k AND norm < k || char(0x10FFFF)`）。另外两组可以在内存中对 `lookup.norm` 计算。每组显示多少行由软件决定。
 
@@ -222,7 +224,7 @@ rank = class × (B + 1) + importance
 |---|---|
 | `headword`、`phrase` | 显示形式；有 `homograph` 时在后面标出编号 |
 | `variant`、`inflection` | 显示形式 → 所属词条的 `headword`（两者相同时不写箭头） |
-| `reading`、`hidden` | 词条的 `headword`；`reading` 后面接匹配到的读法 |
+| `reading`、`hidden` | 词条的 `headword`；`reading` 后面接匹配到的读法（检索键相同的读法在打包时已只留一行，如 `hǎo`、`hào`） |
 
 下面一行是短释义：先找 `summaries` 中代表行的 `(entry, anchor)`，没有时找 `(entry, 0)`，再没有就不显示。
 
@@ -232,7 +234,7 @@ rank = class × (B + 1) + importance
 
 ## 6. 构建检查
 
-下列问题使构建失败：manifest 或类型表不合法；某行不是合法的 JSON；根节点缺 `id` 或 `lang`；词条 key 重复；资源文件扩展名不认识或键重复。
+下列问题使构建失败：manifest、类型表或主题不合法；某行不是合法的 JSON；根节点缺 `id` 或 `lang`；词条 key 重复；资源文件扩展名不认识或键重复。
 
 下列问题写入构建报告，不中断构建：
 
