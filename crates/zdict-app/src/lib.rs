@@ -4,6 +4,7 @@
 //! (apps/desktop/src-tauri) only wraps these.
 
 mod config;
+mod library;
 mod settings;
 
 use std::path::Path;
@@ -14,6 +15,7 @@ use zdict_core::{Error as CoreError, Focus, Link, LinkTarget, Pack, Registry, Wo
 use zdict_html::{Markup, entry_html, theme_css};
 
 pub use config::Config;
+pub use library::{Added, Library, LibraryItem, Rejected, Session};
 pub use settings::{Settings, Switches};
 
 /// A failed command: `code` is one of `no_pack`, `not_found`, `bad_input`,

@@ -10,36 +10,31 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use tauri::Manager;
-use zdict_app::{Config, Dictionary};
+use zdict_app::Session;
 
-/// Shared by every command: the open dictionary (if any) and where the
-/// configuration lives.
+/// Shared by every command: configuration, library, and the open dictionary.
 pub struct AppState {
-    pub dictionary: Arc<RwLock<Option<Dictionary>>>,
-    pub config_path: PathBuf,
+    pub session: Arc<RwLock<Session>>,
 }
 
 impl AppState {
-    /// Open `path`, remember it, and read the word index in the background
-    /// so the first keystroke is answered quickly too.
-    pub fn open(&self, path: PathBuf) -> zdict_app::Result<()> {
-        let mut config = Config::load(&self.config_path);
-        let dictionary = Dictionary::open(&path, config.settings.clone())?;
-        *self.dictionary.write().unwrap_or_else(|e| e.into_inner()) = Some(dictionary);
-        config.pack = Some(path);
-        config.save(&self.config_path)?;
-        let shared = Arc::clone(&self.dictionary);
+    /// Prepare the current dictionary's word index under a read lock.
+    pub fn warm_up(&self) {
+        let shared = Arc::clone(&self.session);
         std::thread::spawn(move || {
-            if let Some(dictionary) = shared.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            if let Some(dictionary) = shared
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .dictionary()
+            {
                 let _ = dictionary.warm_up();
             }
         });
-        Ok(())
     }
 }
 
-/// `--pack <path>`, then `ZDICT_PACK`, then the remembered path.
-fn pack_path(config: &Config) -> Option<PathBuf> {
+/// `--pack <path>`, then `ZDICT_PACK`; Session loads the remembered active pack.
+fn pack_path() -> Option<PathBuf> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         if arg == "--pack" {
@@ -49,9 +44,7 @@ fn pack_path(config: &Config) -> Option<PathBuf> {
             return Some(PathBuf::from(path));
         }
     }
-    std::env::var_os("ZDICT_PACK")
-        .map(PathBuf::from)
-        .or_else(|| config.pack.clone())
+    std::env::var_os("ZDICT_PACK").map(PathBuf::from)
 }
 
 fn main() {
@@ -59,23 +52,24 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("config.json");
-            let config = Config::load(&config_path);
-            let state = AppState {
-                dictionary: Arc::new(RwLock::new(None)),
-                config_path,
-            };
-            if let Some(path) = pack_path(&config) {
-                // A missing or broken pack is not fatal: the UI asks for one.
-                if let Err(err) = state.open(path.clone()) {
-                    eprintln!("zdict: cannot open {}: {err}", path.display());
-                }
+            let (session, error) = Session::start(Some(config_path), pack_path());
+            if let Some(error) = error {
+                eprintln!("zdict: {error}");
             }
+            let state = AppState {
+                session: Arc::new(RwLock::new(session)),
+            };
+            state.warm_up();
             app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::pack_info,
-            commands::open_pack,
+            commands::library,
+            commands::add_packs,
+            commands::remove_pack,
+            commands::move_pack,
+            commands::use_pack,
             commands::words,
             commands::entry,
             commands::follow,

@@ -1,5 +1,7 @@
 //! Display settings, applied as an overlay theme over the pack's (spec/v1.md §3.2, §4.3).
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 use zdict_core::theme::{Theme, ThemeStack};
 use zdict_core::{Registry, Role};
@@ -53,15 +55,17 @@ impl Settings {
             (self.hide_pronunciation, Role::Pronunciation),
             (self.hide_examples, Role::Example),
         ];
-        for (hide, role) in hidden {
-            if hide {
-                for name in registry.types_with_role(role) {
-                    // Quoted as a string key (a JSON string is a TOML basic
-                    // string), so no name can end the table header.
-                    let key = serde_json::Value::from(name);
-                    style.push_str(&format!("[style.{key}]\ndisplay = \"none\"\n"));
-                }
-            }
+        // Each type once: a type with both roles must not repeat its table.
+        let names: BTreeSet<&str> = hidden
+            .into_iter()
+            .filter(|(hide, _)| *hide)
+            .flat_map(|(_, role)| registry.types_with_role(role))
+            .collect();
+        for name in names {
+            // Quoted as a string key (a JSON string is a TOML basic string),
+            // so no name can end the table header.
+            let key = serde_json::Value::from(name);
+            style.push_str(&format!("[style.{key}]\ndisplay = \"none\"\n"));
         }
         style
     }

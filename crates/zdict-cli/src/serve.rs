@@ -4,16 +4,20 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 use tiny_http::{Header, Method, Response, Server};
-use zdict_app::{AppError, Dictionary, Settings};
+use zdict_app::{AppError, Dictionary, Session, Settings};
 use zdict_core::Link;
 
 pub fn run(path: &Path, port: u16) -> Result<()> {
-    let mut dictionary = Dictionary::open(path, Settings::default())
-        .with_context(|| format!("opening {}", path.display()))?;
-    dictionary.warm_up()?;
+    let (mut session, error) = Session::start(None, Some(path.to_owned()));
+    if let Some(error) = error {
+        eprintln!("zdict: {error}");
+    }
+    if let Some(dictionary) = session.dictionary() {
+        dictionary.warm_up()?;
+    }
     let server = Server::http(("127.0.0.1", port))
         .map_err(|err| anyhow!("listening on port {port}: {err}"))?;
     eprintln!(
@@ -32,7 +36,7 @@ pub fn run(path: &Path, port: u16) -> Result<()> {
         } else {
             let name = request.url().trim_start_matches('/').to_owned();
             let args: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
-            match call(&mut dictionary, &name, &args) {
+            match call(&mut session, &name, &args) {
                 Ok(value) => (200, value),
                 Err(err) => (400, serde_json::to_value(err)?),
             }
@@ -55,34 +59,59 @@ fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name, value).expect("static header")
 }
 
-fn call(dictionary: &mut Dictionary, name: &str, args: &Value) -> Result<Value, AppError> {
+fn call(session: &mut Session, name: &str, args: &Value) -> Result<Value, AppError> {
+    let path = || -> Result<std::path::PathBuf, AppError> {
+        serde_json::from_value(args["path"].clone())
+            .map_err(|err| AppError::new("bad_input", err.to_string()))
+    };
     let text = || args["text"].as_str().unwrap_or_default().to_owned();
     let limit = || args["limit"].as_u64().unwrap_or(20) as usize;
     let to_json = |value: Result<Value, serde_json::Error>| {
         value.map_err(|err| AppError::new("internal", err.to_string()))
     };
     match name {
-        "pack_info" => to_json(serde_json::to_value(dictionary.info())),
-        "words" => to_json(serde_json::to_value(dictionary.words(&text(), limit())?)),
+        "pack_info" => to_json(serde_json::to_value(dictionary(session)?.info())),
+        "library" => to_json(serde_json::to_value(session.library())),
+        "add_packs" => {
+            let paths = serde_json::from_value(args["paths"].clone())
+                .map_err(|err| AppError::new("bad_input", err.to_string()))?;
+            to_json(serde_json::to_value(session.add_packs(paths)?))
+        }
+        "remove_pack" => to_json(serde_json::to_value(session.remove_pack(&path()?)?)),
+        "move_pack" => {
+            let index: usize = serde_json::from_value(args["index"].clone())
+                .map_err(|err| AppError::new("bad_input", err.to_string()))?;
+            to_json(serde_json::to_value(session.move_pack(&path()?, index)?))
+        }
+        "use_pack" => to_json(serde_json::to_value(session.use_pack(&path()?)?)),
+        "words" => to_json(serde_json::to_value(
+            dictionary(session)?.words(&text(), limit())?,
+        )),
         "entry" => to_json(serde_json::to_value(
-            dictionary.entry(args["key"].as_str().unwrap_or_default())?,
+            dictionary(session)?.entry(args["key"].as_str().unwrap_or_default())?,
         )),
         "follow" => {
             let link: Link = serde_json::from_value(args["link"].clone())
                 .map_err(|err| AppError::new("bad_input", err.to_string()))?;
             let current = args["current"].as_str().unwrap_or_default();
-            to_json(serde_json::to_value(dictionary.follow(current, &link)?))
+            to_json(serde_json::to_value(
+                dictionary(session)?.follow(current, &link)?,
+            ))
         }
-        "settings" => to_json(serde_json::to_value(dictionary.settings())),
+        "settings" => to_json(serde_json::to_value(session.settings())),
         "set_settings" => {
             let settings: Settings = serde_json::from_value(args["settings"].clone())
                 .map_err(|err| AppError::new("bad_input", err.to_string()))?;
-            to_json(serde_json::to_value(dictionary.set_settings(settings)?))
+            to_json(serde_json::to_value(session.set_settings(settings)?))
         }
-        "theme_css" => Ok(Value::String(dictionary.theme_css())),
+        "theme_css" => Ok(Value::String(dictionary(session)?.theme_css())),
         other => Err(AppError::new(
             "bad_input",
             format!("unknown command {other}"),
         )),
     }
+}
+
+fn dictionary(session: &Session) -> Result<&Dictionary, AppError> {
+    session.dictionary().ok_or_else(AppError::no_pack)
 }

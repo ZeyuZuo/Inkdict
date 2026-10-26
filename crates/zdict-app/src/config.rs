@@ -1,4 +1,4 @@
-//! What the app remembers between runs: the pack path and the settings,
+//! What the app remembers between runs: the library and the settings,
 //! as `config.json` in the app's config directory.
 
 use std::path::{Path, PathBuf};
@@ -8,10 +8,35 @@ use serde::{Deserialize, Serialize};
 use crate::{AppError, Result, Settings};
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(from = "SavedConfig")]
 pub struct Config {
-    pub pack: Option<PathBuf>,
+    pub packs: Vec<PathBuf>,
+    pub active: Option<PathBuf>,
     pub settings: Settings,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct SavedConfig {
+    packs: Option<Vec<PathBuf>>,
+    active: Option<PathBuf>,
+    pack: Option<PathBuf>,
+    settings: Settings,
+}
+
+impl From<SavedConfig> for Config {
+    fn from(saved: SavedConfig) -> Self {
+        let (packs, active) = match saved.packs {
+            Some(packs) => (packs, saved.active),
+            None => (saved.pack.iter().cloned().collect(), saved.pack),
+        };
+        let active = active.filter(|path| packs.contains(path));
+        Self {
+            packs,
+            active,
+            settings: saved.settings,
+        }
+    }
 }
 
 impl Config {

@@ -53,7 +53,8 @@ fn config_round_trips_and_tolerates_broken_files() {
     let path = dir.path().join("zdict/config.json");
     assert_eq!(Config::load(&path), Config::default());
     let config = Config {
-        pack: Some("/data/oalecd10.zdpack".into()),
+        packs: vec!["/data/oalecd10.zdpack".into()],
+        active: Some("/data/oalecd10.zdpack".into()),
         settings: Settings {
             font_scale: 1.3,
             ..Settings::default()
