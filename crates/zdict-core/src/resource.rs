@@ -1,9 +1,9 @@
-//! Resource references to URLs (spec/v0.md §5, spec/pack-v0.md §6).
+//! Resource references to URLs (spec/v1.md §7, spec/pack-v1.md §4).
 
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::error::Result;
 use crate::pack::Pack;
@@ -23,6 +23,22 @@ pub(crate) fn read_sources(db: &Connection) -> Result<Sources> {
 }
 
 impl Pack {
+    /// Stored MIME type and bytes for `kind:key`, before trying online sources.
+    /// A malformed reference or absent resource returns `None`.
+    pub fn resource(&self, reference: &str) -> Result<Option<(String, Vec<u8>)>> {
+        let Some((kind, key)) = reference.split_once(':') else {
+            return Ok(None);
+        };
+        Ok(self
+            .db()
+            .query_row(
+                "SELECT mime, body FROM resources WHERE kind = ? AND key = ?",
+                [kind, key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?)
+    }
+
     /// URLs for a resource reference `kind:key`, best first. Empty when the
     /// kind has no source or the reference has no `:`.
     pub fn resource_urls(&self, reference: &str) -> Vec<String> {
@@ -69,6 +85,19 @@ mod tests {
         assert_eq!(encode_uri_component("a b/c?d%"), "a%20b%2Fc%3Fd%25");
         assert_eq!(encode_uri_component("!~*'()-_."), "!~*'()-_.");
         assert_eq!(encode_uri_component("中"), "%E4%B8%AD");
+    }
+
+    #[test]
+    fn reads_stored_resources_without_interpreting_the_key() {
+        let test = TestPack::new();
+        test.sql("INSERT INTO resources VALUES ('audio', 'a:b', 'audio/mpeg', x'0001FF')");
+        let pack = test.open();
+        assert_eq!(
+            pack.resource("audio:a:b").unwrap(),
+            Some(("audio/mpeg".into(), vec![0, 1, 255]))
+        );
+        assert_eq!(pack.resource("audio:missing").unwrap(), None);
+        assert_eq!(pack.resource("no-kind").unwrap(), None);
     }
 
     #[test]

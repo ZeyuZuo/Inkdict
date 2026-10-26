@@ -27,8 +27,8 @@ pub use node::{Attr, Child, Entry, Node};
 pub use pack::Pack;
 pub use registry::{Kind, Registry, Role, TypeSpec};
 pub use render::{
-    Anchor, Audio, Collapse, Generated, Icon, Image, Marker, RenderChild, RenderNode, Renderer,
-    TextStyle, interpolate,
+    Anchor, Audio, Collapse, Font, Generated, Icon, Image, Marker, RenderChild, RenderNode,
+    Renderer, Tab, TextStyle, interpolate,
 };
 pub use resource::encode_uri_component;
 pub use words::{Group, IndexKind, Word};
