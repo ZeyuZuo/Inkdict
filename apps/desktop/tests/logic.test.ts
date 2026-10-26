@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { emptyHistory, travel, visit, type Visit } from '../src/lib/history';
+import { emptyHistory, leave, travel, visit, type Visit } from '../src/lib/history';
 import { moveSelection, selectedIndex } from '../src/lib/selection';
-import { applyTheme, defaults, keys, loadSettings, loadTheme, saveSettings, type StorageLike } from '../src/lib/storage';
+import { applyTheme, keys, loadTheme, type StorageLike } from '../src/lib/storage';
 import { percentile, record, summarize } from '../src/lib/perf';
+import { detail, sections } from '../src/lib/words';
+import type { Word } from '../src/lib/types';
 
 function memory(): StorageLike {
   const map = new Map<string, string>();
   return { getItem: key => map.get(key) ?? null, setItem: (key, value) => { map.set(key, value); } };
 }
-const target = (key: string): Visit => ({ key, headword: key, focus: { kind: 'top' } });
+const target = (key: string, text = ''): Visit => ({ key, headword: key, focus: { kind: 'top' }, view: null, text, from: null });
 
 describe('history', () => {
   it('moves back and forward without exceeding its bounds', () => {
@@ -25,7 +27,21 @@ describe('history', () => {
     const next = visit(travel(history, -1), focused);
     expect(next.visits.map(v => v.key)).toEqual(['a', 'c']);
     expect(next.visits[next.index].focus).toEqual(focused.focus);
-    expect(visit(next, focused)).toBe(next);
+    expect(visit(next, focused).visits).toHaveLength(2);
+  });
+  it('lets entries shown while typing share one stop', () => {
+    let history = visit(emptyHistory(), target('go', 'go'));
+    history = visit(history, target('harbour', 'h'));
+    history = visit(history, target('harbinger', 'harb'), true);
+    expect(history.visits.map(v => [v.key, v.text])).toEqual([['go', 'go'], ['harbinger', 'harb']]);
+    // The same entry again only updates the search text.
+    history = visit(history, target('harbinger', 'harbi'), true);
+    expect(history.visits.map(v => v.text)).toEqual(['go', 'harbi']);
+  });
+  it('remembers where the reader left a visit', () => {
+    const history = leave(visit(emptyHistory(), target('a')), { top: 240, tabs: [1] });
+    expect(history.visits[0].view).toEqual({ top: 240, tabs: [1] });
+    expect(leave(emptyHistory(), { top: 1, tabs: [] })).toEqual(emptyHistory());
   });
   it('caps history at 100 visits', () => {
     let history = emptyHistory();
@@ -33,6 +49,26 @@ describe('history', () => {
     expect(history.visits).toHaveLength(100);
     expect(history.visits[0].key).toBe('5');
     expect(history.index).toBe(99);
+  });
+});
+
+describe('word list', () => {
+  const word = (form: string, group: Word['group'], extra: Partial<Word> = {}): Word => ({
+    group, form, kind: 'headword', entry: form, headword: form, homograph: null, anchor: 0, readings: [],
+    summary: null, summary_lang: null, distance: null, rank: 0, target: null, ...extra,
+  });
+  it('labels the contains and close groups and keeps row positions', () => {
+    const found = sections([word('harbour', 'prefix'), word('harbours', 'prefix'), word('safe harbour', 'contains')], ' harbour ');
+    expect(found.map(s => [s.group, s.label, s.start, s.rows.length])).toEqual([
+      ['prefix', '', 0, 2], ['contains', '含有 harbour', 2, 1],
+    ]);
+    expect(sections([word('harbour', 'close')], 'harbuor')[0].label).toBe('拼写相近');
+    expect(sections([], 'x')).toEqual([]);
+  });
+  it('says where variants point and which readings matched', () => {
+    expect(detail(word('went', 'prefix', { kind: 'inflection', headword: 'go', target: 'go' }))).toBe('→ go');
+    expect(detail(word('和', 'prefix', { kind: 'reading', readings: ['hé', 'huó'] }))).toBe('hé huó');
+    expect(detail(word('go', 'prefix'))).toBe('');
   });
 });
 
@@ -52,24 +88,7 @@ describe('keyboard selection', () => {
   });
 });
 
-describe('settings and theme persistence', () => {
-  it('round trips every setting including font scale', () => {
-    const storage = memory();
-    const settings = { hide_chinese: true, hide_pronunciation: true, hide_examples: true, font_scale: 1.4 };
-    expect(loadSettings(storage)).toBeNull();
-    saveSettings(storage, settings);
-    expect(loadSettings(storage)).toEqual(settings);
-    expect(defaults.font_scale).toBe(1);
-  });
-  it('ignores corrupt data, out-of-range scales, and unavailable storage', () => {
-    const storage = memory();
-    for (const invalid of ['{', 'null', JSON.stringify({ ...defaults, font_scale: 9 }), JSON.stringify({ ...defaults, hide_chinese: 'true' })]) {
-      storage.setItem(keys.settings, invalid); expect(loadSettings(storage)).toBeNull();
-    }
-    const blocked: StorageLike = { getItem() { throw new Error(); }, setItem() { throw new Error(); } };
-    expect(loadSettings(blocked)).toBeNull();
-    expect(() => saveSettings(blocked, defaults)).not.toThrow();
-  });
+describe('theme persistence', () => {
   it('removes the theme attribute for system mode and persists explicit modes', () => {
     const storage = memory();
     const root = { dataset: {} } as HTMLElement;
@@ -79,6 +98,14 @@ describe('settings and theme persistence', () => {
     expect(root.dataset.theme).toBe('light');
     applyTheme('system', root, storage);
     expect(root.dataset.theme).toBeUndefined(); expect(loadTheme(storage)).toBe('system');
+  });
+  it('ignores corrupt data and unavailable storage', () => {
+    const storage = memory();
+    storage.setItem(keys.theme, '{');
+    expect(loadTheme(storage)).toBe('system');
+    const blocked: StorageLike = { getItem() { throw new Error(); }, setItem() { throw new Error(); } };
+    expect(loadTheme(blocked)).toBe('system');
+    expect(() => applyTheme('dark', { dataset: {} } as HTMLElement, blocked)).not.toThrow();
   });
 });
 

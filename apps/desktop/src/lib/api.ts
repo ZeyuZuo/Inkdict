@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ApiError, Column, Commands, Link, Settings } from './types';
+import type { ApiError, Commands, Link, Settings } from './types';
 
 export const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -30,10 +30,12 @@ async function command<K extends keyof Commands>(name: K, args: Commands[K][0]):
 
 export const api = {
   packInfo: () => command('pack_info', undefined),
-  openPack: (path: string) => command('open_pack', { path }),
-  suggest: (text: string, limit = 30) => command('suggest', { text, limit }),
-  correct: (text: string, limit = 10) => command('correct', { text, limit }),
-  search: (text: string, limit = 30, column: Column = null) => command('search', { text, limit, column }),
+  library: () => command('library', undefined),
+  addPacks: (paths: string[]) => command('add_packs', { paths }),
+  removePack: (path: string) => command('remove_pack', { path }),
+  movePack: (path: string, index: number) => command('move_pack', { path, index }),
+  usePack: (path: string) => command('use_pack', { path }),
+  words: (text: string, limit = 30) => command('words', { text, limit }),
   entry: (key: string) => command('entry', { key }),
   follow: (current: string, link: Link) => command('follow', { current, link }),
   settings: () => command('settings', undefined),

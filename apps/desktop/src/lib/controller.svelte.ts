@@ -1,77 +1,102 @@
 import { tick } from 'svelte';
-import { api, apiError } from './api';
-import type { Column, Entry, Focus, Link, PackInfo, Result, Settings } from './types';
-import { QueryRunner, Sequence } from './query';
-import { emptyHistory, travel, visit, type History } from './history';
-import { applyTheme, browserStorage, defaults, loadSettings, loadTheme, saveSettings, type ThemeMode } from './storage';
+import { api, apiError, isTauri } from './api';
+import type { Entry, Focus, Library, Link, PackInfo, Settings, Word } from './types';
+import { Sequence } from './query';
+import { emptyHistory, leave, travel, visit, type History, type View } from './history';
+import { applyTheme, browserStorage, loadTheme, type ThemeMode } from './storage';
 import { createSamples, record, type Metric } from './perf';
-import { moveSelection, selectedIndex } from './selection';
+import { moveSelection } from './selection';
 import { installTheme } from './theme';
 
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-export type EntryPosition = Focus | { kind: 'preserve'; top: number };
+export type EntryPosition = Focus | ({ kind: 'preserve' } & View);
+/** Rows per group; the list scrolls. */
+const LIMIT = 40;
+/** Typing pauses this long before the top row's entry is shown. */
+const SHOW_DELAY = 90;
+
+interface OpenOptions {
+  /** Take the current history slot (entries shown while typing). */
+  replace?: boolean;
+  /** Headword of the entry whose link led here. */
+  from?: string | null;
+  /** Travelling through history: use this one instead of adding a visit. */
+  navigation?: History;
+  view?: View | null;
+}
 
 export class Dictionary {
   text = $state('');
-  fulltext = $state(false);
-  column = $state<Column>(null);
-  rows = $state<Result[]>([]);
-  corrected = $state(false);
+  words = $state<Word[]>([]);
   selection = $state(-1);
-  searching = $state(false);
+  /** Narrow window: the list drops down while typing, closes once a row is opened. */
+  listOpen = $state(false);
+  searched = $state('');
   loading = $state(false);
   error = $state('');
   pack = $state<PackInfo | null>(null);
+  library = $state<Library>({ active: null, packs: [] });
   current = $state<Entry | null>(null);
   position = $state<EntryPosition>({ kind: 'top' });
+  /** Headword of the entry whose link led to the current one. */
+  from = $state<string | null>(null);
   entryStarted = $state(0);
   history = $state<History>(emptyHistory());
-  /** Suggestions are shown under the query while typing, hidden once one is opened. */
-  listOpen = $state(false);
-  settings = $state<Settings>({ ...defaults });
-  settingsBusy = $state(true);
+  settings = $state<Settings>({ hide_pronunciation: false, hide_examples: false, font_scale: 1 });
   theme = $state<ThemeMode>('system');
+  narrow = $state(false);
+  pinned = $state(false);
   showSettings = $state(false);
   showPerf = $state(false);
   perfVersion = $state(0);
   readonly samples = createSamples();
+  /** Set by the entry pane: where the reader is, saved with each visit. */
+  view: () => View = () => ({ top: 0, tabs: [] });
   private storage = browserStorage();
-  private queries = new QueryRunner(api);
+  private queries = new Sequence();
   private entries = new Sequence();
-  private queryEpoch = 0;
-
-  get choices() { return this.text.trim() ? this.rows : []; }
+  private showTimer: ReturnType<typeof setTimeout> | undefined;
+  private shownWhileTyping = false;
 
   async initialize() {
     this.setTheme(loadTheme(this.storage));
     window.__zdictPerf = this.samples;
     const results = await Promise.allSettled([
-      api.themeCss().then(installTheme),
-      api.packInfo().then(pack => { this.pack = pack; }),
-      (async () => {
-        const saved = loadSettings(this.storage);
-        this.settings = saved ? await api.setSettings(saved) : await api.settings();
-      })(),
+      this.loadPack(),
+      api.settings().then(settings => { this.settings = settings; }),
+      this.refreshLibrary(),
     ]);
     for (const result of results) if (result.status === 'rejected') this.report(result.reason);
-    this.settingsBusy = false;
-    // First run: no pack yet, so open the panel where one is chosen.
-    if (!this.pack) this.showSettings = true;
-    else void this.warmUp();
+    if (this.pack) void this.warmUp();
+  }
+
+  /** The open pack and its theme; none is not an error. */
+  private async loadPack() {
+    try {
+      this.pack = await api.packInfo();
+      installTheme(await api.themeCss());
+    } catch (error) {
+      if (apiError(error).code !== 'no_pack') throw error;
+      this.pack = null;
+    }
+  }
+
+  async refreshLibrary() {
+    this.library = await api.library();
   }
 
   /** Render one entry off-screen once: WebKit's first entry layout took
    *  ~300 ms, later ones ~17 ms, so pay that before the first lookup. */
   private async warmUp() {
     try {
-      const [first] = await api.suggest('a', 1);
+      const [first] = await api.words('a', 1);
       if (!first) return;
       const entry = await api.entry(first.entry);
       const box = document.createElement('div');
-      box.className = 'entry-pane';
+      box.className = 'entry';
       box.setAttribute('aria-hidden', 'true');
       box.style.cssText = 'position:absolute;left:-10000px;top:0;width:46rem;visibility:hidden;pointer-events:none';
-      box.innerHTML = `<div class="entry-content">${entry.html}</div>`;
+      box.innerHTML = entry.html;
       document.body.append(box);
       void box.offsetHeight;
       await frame();
@@ -81,58 +106,87 @@ export class Dictionary {
 
   report(error: unknown) {
     const failure = apiError(error);
-    this.error = failure.code === 'no_pack' ? '请在设置中打开一个词典包。' : failure.message;
+    this.error = failure.code === 'no_pack' ? '还没有打开词典。在设置里添加一部词典。' : failure.message;
   }
 
-  async lookup(text: string, started = performance.now()) {
+  /** Look up `text`; the list is ready when this resolves (null if a later
+   *  input overtook it). In a wide window the top row's entry follows. */
+  async lookup(text: string, started = performance.now(), show = !this.narrow) {
     this.text = text;
-    this.rows = [];
-    this.selection = -1;
-    this.corrected = false;
-    this.searching = true;
-    this.error = '';
-    this.listOpen = text.trim() !== '';
-    const epoch = ++this.queryEpoch;
+    clearTimeout(this.showTimer);
+    const token = this.queries.next();
+    if (!text.trim()) {
+      this.words = []; this.selection = -1; this.listOpen = false; this.searched = '';
+      return [];
+    }
     try {
-      const result = await this.queries.run(text, this.fulltext, this.column);
-      if (!result || epoch !== this.queryEpoch) return null;
-      this.rows = result.rows;
-      this.corrected = result.corrected;
-      this.searching = false;
+      const words = await api.words(text, LIMIT);
+      if (!this.queries.current(token)) return null;
+      this.words = words;
+      this.searched = text;
+      this.selection = words.length ? 0 : -1;
+      this.listOpen = true;
       await tick();
       await frame();
-      if (epoch !== this.queryEpoch) return null;
+      if (!this.queries.current(token)) return null;
       this.measure('suggest', started);
-      return result;
+      if (show && words.length) {
+        this.showTimer = setTimeout(() => {
+          if (this.queries.current(token)) void this.show(0, true);
+        }, SHOW_DELAY);
+      }
+      return words;
     } catch (error) {
-      if (epoch === this.queryEpoch) { this.searching = false; this.report(error); }
+      if (this.queries.current(token)) this.report(error);
       return null;
     }
   }
 
-  changeMode() { this.fulltext = !this.fulltext; void this.lookup(this.text); }
-  changeColumn(column: Column) { this.column = column; void this.lookup(this.text); }
-  select(direction: -1 | 1) { this.selection = moveSelection(this.selection, direction, this.choices.length); }
-  async choose(index = selectedIndex(this.selection, this.choices.length)) {
-    const item = this.choices[index];
-    if (!item) return;
-    this.listOpen = false;
-    await this.open(item.entry, item.anchor ? { kind: 'anchor', number: item.anchor } : { kind: 'top' });
+  /** ↑↓: move through the list; a wide window shows each row at once. */
+  move(direction: -1 | 1) {
+    this.selection = moveSelection(this.selection, direction, this.words.length);
+    this.listOpen = this.words.length > 0;
+    if (!this.narrow && this.selection >= 0) void this.show(this.selection, true);
   }
 
-  async open(key: string, focus: Focus = { kind: 'top' }, navigation?: History) {
+  /** Open a row on purpose (click, Enter): a history stop of its own. */
+  async choose(index = this.selection) {
+    if (index < 0 || index >= this.words.length) return;
+    this.selection = index;
+    this.listOpen = false;
+    await this.show(index, false);
+  }
+
+  private async show(index: number, typing: boolean) {
+    clearTimeout(this.showTimer);
+    const word = this.words[index];
+    if (!word) return;
+    const focus: Focus = word.anchor ? { kind: 'anchor', number: word.anchor } : { kind: 'top' };
+    const replace = typing && this.shownWhileTyping;
+    await this.open(word.entry, focus, { replace });
+    // Entries shown while typing share one history stop until one is chosen.
+    this.shownWhileTyping = typing;
+  }
+
+  async open(key: string, focus: Focus = { kind: 'top' }, options: OpenOptions = {}) {
     const token = this.entries.next();
     const started = performance.now();
     this.loading = true;
-    this.error = '';
     try {
       const entry = await api.entry(key);
       if (!this.entries.current(token)) return;
-      this.position = focus;
+      const left = leave(this.history, this.view());
+      const from = options.navigation
+        ? options.navigation.visits[options.navigation.index].from
+        : options.from ?? null;
+      this.history = options.navigation ?? visit(left, {
+        key: entry.key, headword: entry.headword, focus, view: null, text: this.text, from,
+      }, options.replace);
+      this.from = from;
+      this.position = options.view ? { kind: 'preserve', ...options.view } : focus;
       this.entryStarted = started;
       this.current = entry;
-      const target = { key: entry.key, headword: entry.headword, focus };
-      this.history = navigation ?? visit(this.history, target);
+      this.error = '';
     } catch (error) {
       if (this.entries.current(token)) this.report(error);
     } finally {
@@ -140,25 +194,38 @@ export class Dictionary {
     }
   }
 
+  /** Alt+← / Alt+→ and the mouse side buttons: entry, place and search box come back. */
   async navigate(direction: -1 | 1) {
-    const next = travel(this.history, direction);
-    if (next === this.history) return;
+    const left = leave(this.history, this.view());
+    const next = travel(left, direction);
+    if (next === left) return;
+    this.shownWhileTyping = false;
     const target = next.visits[next.index];
-    await this.open(target.key, target.focus, next);
+    if (target.text !== this.text) await this.lookup(target.text, performance.now(), false);
+    this.listOpen = false;
+    const index = this.words.findIndex(word => word.entry === target.key);
+    this.selection = index;
+    await this.open(target.key, target.focus, { navigation: next, view: target.view });
   }
 
   async follow(link: Link) {
     if (!this.current) return;
+    const source = this.current;
     const token = this.entries.next();
-    this.loading = false;
     try {
-      const target = await api.follow(this.current.key, link);
+      const target = await api.follow(source.key, link);
       if (!this.entries.current(token)) return;
-      if (target.kind === 'entry') await this.open(target.key, target.focus);
-      else {
-        this.fulltext = false;
-        const result = await this.lookup(target.text);
-        if (result && this.entries.current(token)) await this.choose(0);
+      this.shownWhileTyping = false;
+      if (target.kind === 'entry') {
+        await this.open(target.key, target.focus, { from: source.headword });
+      } else {
+        const words = await this.lookup(target.text, performance.now(), false);
+        if (words?.length) {
+          this.listOpen = false;
+          const word = words[0];
+          await this.open(word.entry, word.anchor ? { kind: 'anchor', number: word.anchor } : { kind: 'top' },
+            { from: source.headword });
+        }
       }
     } catch (error) { if (this.entries.current(token)) this.report(error); }
   }
@@ -168,42 +235,78 @@ export class Dictionary {
     applyTheme(mode, document.documentElement, this.storage);
   }
 
-  async updateSettings(settings: Settings, top: number) {
-    if (this.settingsBusy) return;
-    this.settingsBusy = true;
-    this.error = '';
+  async updateSettings(settings: Settings) {
     try {
       this.settings = await api.setSettings(settings);
-      saveSettings(this.storage, this.settings);
-      if (this.current) {
-        const token = this.entries.next();
-        const started = performance.now();
-        this.loading = true;
-        try {
-          const entry = await api.entry(this.current.key);
-          if (this.entries.current(token)) {
-            this.position = { kind: 'preserve', top };
-            this.entryStarted = started;
-            this.current = entry;
-          }
-        } finally {
-          if (this.entries.current(token)) this.loading = false;
-        }
-      }
+      await this.rerender();
     } catch (error) { this.report(error); }
-    finally { this.settingsBusy = false; }
   }
 
-  async openPack(path: string) {
+  /** Render the current entry again (new settings) where the reader is. */
+  private async rerender() {
+    if (!this.current) return;
+    const token = this.entries.next();
+    const view = this.view();
     try {
-      const pack = await api.openPack(path);
-      this.entries.next(); this.queries.cancel(); this.queryEpoch++;
-      this.loading = false; this.searching = false;
-      this.pack = pack; this.current = null; this.history = emptyHistory();
-      this.rows = []; this.text = ''; this.error = ''; this.selection = -1;
-      installTheme(await api.themeCss());
-      this.settings = await api.setSettings(this.settings);
-      this.showSettings = false;
+      const entry = await api.entry(this.current.key);
+      if (!this.entries.current(token)) return;
+      this.position = { kind: 'preserve', ...view };
+      this.entryStarted = performance.now();
+      this.current = entry;
+    } catch (error) { if (this.entries.current(token)) this.report(error); }
+  }
+
+  async addPacks(paths: string[]) {
+    try {
+      const had = this.library.active;
+      const added = await api.addPacks(paths);
+      this.library = added.library;
+      if (added.rejected.length) {
+        this.error = added.rejected.map(item => `${item.path}：${item.message}`).join('\n');
+      }
+      if (added.library.active !== had) await this.switched();
+    } catch (error) { this.report(error); }
+  }
+
+  async removePack(path: string) {
+    try {
+      const had = this.library.active;
+      this.library = await api.removePack(path);
+      if (this.library.active !== had) await this.switched();
+    } catch (error) { this.report(error); }
+  }
+
+  async movePack(path: string, index: number) {
+    try { this.library = await api.movePack(path, index); } catch (error) { this.report(error); }
+  }
+
+  async usePack(path: string) {
+    if (path === this.library.active) return;
+    try {
+      await api.usePack(path);
+      await this.refreshLibrary();
+      await this.switched();
+    } catch (error) { this.report(error); }
+  }
+
+  /** Another pack is open (or none): start over with its theme. */
+  private async switched() {
+    this.entries.next();
+    this.queries.next();
+    this.current = null; this.from = null; this.history = emptyHistory();
+    this.words = []; this.selection = -1; this.listOpen = false; this.searched = '';
+    this.error = '';
+    await this.loadPack();
+    if (this.pack && this.text.trim()) await this.lookup(this.text);
+    if (this.pack) void this.warmUp();
+  }
+
+  async togglePin() {
+    if (!isTauri()) return;
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    try {
+      await getCurrentWindow().setAlwaysOnTop(!this.pinned);
+      this.pinned = !this.pinned;
     } catch (error) { this.report(error); }
   }
 

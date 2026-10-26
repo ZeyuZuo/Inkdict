@@ -1,4 +1,4 @@
-import type { Settings, Suggestion } from './types';
+import type { Settings, Word } from './types';
 
 // All definitions and examples below are invented fixtures, not dictionary text.
 export const words = [
@@ -16,12 +16,17 @@ export const words = [
     definition: 'A thin line of sunshine slipping through a curtain.', example: 'One sunthread crossed the quiet desk.', family: 'sunthreaded' },
 ];
 
-export function suggestions(): Suggestion[] {
+/** Word list rows of the invented entries: each headword, and its phrase at anchor 2. */
+export function rows(): Word[] {
   return words.flatMap(w => [
-    { form: w.word, entry: w.key, headword: w.word, kind: 'headword', anchor: 0, homograph: null },
-    { form: `${w.word} moment`, entry: w.key, headword: w.word, kind: 'phrase', anchor: 2, homograph: null },
-  ]);
+    { form: w.word, kind: 'headword', anchor: 0, summary: `n. ${w.zh}` },
+    { form: `${w.word} moment`, kind: 'phrase', anchor: 2, summary: '留意微小事物的片刻' },
+  ].map(row => ({
+    group: 'prefix', entry: w.key, headword: w.word, homograph: null, readings: [], summary_lang: 'zh-Hans',
+    distance: null, rank: row.anchor, target: null, ...row,
+  }) as Word));
 }
+
 export function escape(text: string): string {
   return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
@@ -57,13 +62,13 @@ export function renderMock(key: string, settings: Settings): string | null {
     <section class="dx-sense" data-anchor="1" style="position:relative;padding-left:1.6em;margin-bottom:1.8em">
       <span class="dx-marker" style="width:1.6em;color:var(--c-muted)">1</span>
       <div>${w.definition}</div>
-      ${settings.hide_chinese ? '' : `<div lang="zh-CN" style="color:var(--c-muted);margin-top:.3em">${w.zh}。</div>`}
+      <div lang="zh-CN" style="color:var(--c-muted);margin-top:.3em">${w.zh}。</div>
       ${settings.hide_examples ? '' : example}
     </section>
     <section data-anchor="2" class="dx-phrase" style="border-top:1px solid var(--c-rule);padding-top:1.2em;margin-bottom:1.5em">
       <div class="dx-title">短语</div><strong>${w.word} moment</strong>
       <div>A quiet moment to notice something small.</div>
-      ${settings.hide_chinese ? '' : '<div lang="zh-CN" style="color:var(--c-muted)">留意微小事物的片刻。</div>'}
+      <div lang="zh-CN" style="color:var(--c-muted)">留意微小事物的片刻。</div>
     </section>
     <aside class="dx-word_family" style="padding:1em 1.2em;background:var(--c-box);border-radius:.5em">
       <div class="dx-title">词族</div><strong>${w.family}</strong> <span style="color:var(--c-muted)">衍生形式 · 示例</span>
