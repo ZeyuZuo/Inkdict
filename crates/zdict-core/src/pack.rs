@@ -8,9 +8,9 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use zstd::dict::DecoderDictionary;
 
 use crate::error::{Error, Result};
-use crate::fuzzy::FuzzyIndex;
 use crate::meta::Meta;
 use crate::resource::{Sources, read_sources};
+use crate::words::WordIndex;
 use crate::{APPLICATION_ID, FORMAT_VERSION};
 
 /// An open `.zdpack`, read-only. `Send + Sync`, so apps can share one
@@ -21,8 +21,8 @@ pub struct Pack {
     /// Prepared once: every entry body is compressed with it (spec/pack-v1.md §2.3).
     pub(crate) dictionary: Option<DecoderDictionary<'static>>,
     pub(crate) sources: Sources,
-    /// Spelling-correction index, built on first use.
-    pub(crate) fuzzy: OnceLock<FuzzyIndex>,
+    /// The word list's in-memory index, built on first use.
+    pub(crate) words: OnceLock<WordIndex>,
 }
 
 impl Pack {
@@ -50,7 +50,7 @@ impl Pack {
             meta,
             dictionary,
             sources,
-            fuzzy: OnceLock::new(),
+            words: OnceLock::new(),
         })
     }
 

@@ -1,40 +1,24 @@
-//! Spelling correction over lookup keys (docs/roadmap.md M2).
+//! Close spellings over lookup keys (spec/pack-v1.md §5.1).
 //!
 //! The distinct `lookup.norm` keys go into an FST (value: their best rank),
-//! built in memory on first use: about 1 MB for Oxford instead of a
+//! built in memory with the word index: about 1 MB for Oxford instead of a
 //! SymSpell delete table of tens of MB. A depth-first walk carries one row
-//! of the optimal-string-alignment (Damerau) distance table per character
-//! and prunes branches whose row minimum exceeds the limit.
+//! of the optimal-string-alignment distance table per character and prunes
+//! branches whose row minimum exceeds the limit.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use fst::raw::{Fst, Node, Output};
-use serde::Serialize;
 
 use crate::error::{Error, Result};
-use crate::lookup::Suggestion;
-use crate::pack::Pack;
-use crate::text::norm;
 
 /// Lookup keys as an FST map: key -> lowest rank of its rows.
 pub(crate) struct FuzzyIndex {
     keys: Fst<Vec<u8>>,
 }
 
-/// A form close to what was typed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Correction {
-    #[serde(flatten)]
-    pub suggestion: Suggestion,
-    /// Edits (insert, delete, substitute, swap neighbours) between the
-    /// typed key and this form's key.
-    pub distance: usize,
-}
-
-/// Edits allowed for a typed key of `chars` characters: none for one or
-/// two (everything is close), one for three or four, two from five (a
-/// five-letter typo is often a longer word with two letters dropped).
-/// Distance sorts first, so a looser limit only adds candidates after.
+/// Edits allowed for an input key of `chars` characters: none for one or
+/// two, one for three or four, two from five (spec/pack-v1.md §5.1).
 pub fn max_distance(chars: usize) -> usize {
     match chars {
         0..=2 => 0,
@@ -44,15 +28,10 @@ pub fn max_distance(chars: usize) -> usize {
 }
 
 impl FuzzyIndex {
-    pub(crate) fn build(pack: &Pack) -> Result<Self> {
-        let db = pack.db();
-        let mut statement =
-            db.prepare("SELECT norm, min(rank) FROM lookup GROUP BY norm ORDER BY norm")?;
+    /// From (key, lowest rank) pairs in key order, each key once.
+    pub(crate) fn build<'a>(keys: impl Iterator<Item = (&'a str, i64)>) -> Result<Self> {
         let mut builder = fst::MapBuilder::memory();
-        let mut rows = statement.query([])?;
-        while let Some(row) = rows.next()? {
-            let key: String = row.get(0)?;
-            let rank: i64 = row.get(1)?;
+        for (key, rank) in keys {
             builder
                 .insert(key.as_bytes(), u64::try_from(rank).unwrap_or(0))
                 .map_err(index_error)?;
@@ -77,10 +56,6 @@ impl FuzzyIndex {
         walk.rows.push((0..=walk.query.len()).collect());
         walk.visit(self.keys.root(), Output::zero(), 0);
         walk.found
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.keys.len()
     }
 }
 
@@ -177,8 +152,9 @@ fn last_char(bytes: &[u8]) -> Option<char> {
     std::str::from_utf8(&bytes[start..]).ok()?.chars().next()
 }
 
-/// Characters in one string without a partner in the other, both ways.
-fn letter_difference(a: &str, b: &str) -> usize {
+/// Characters in one string without a partner in the other, both ways:
+/// 0 when one only reorders the other.
+pub(crate) fn letter_difference(a: &str, b: &str) -> usize {
     let mut counts: HashMap<char, isize> = HashMap::new();
     for ch in a.chars() {
         *counts.entry(ch).or_default() += 1;
@@ -196,168 +172,54 @@ fn index_error(err: fst::Error) -> Error {
     }
 }
 
-impl Pack {
-    /// Forms within a few typing errors of the input, one per lookup key,
-    /// closest first, then by rank. The allowed distance grows with the input length
-    /// ([`max_distance`]); exact matches come first with distance 0.
-    pub fn correct(&self, text: &str, limit: usize) -> Result<Vec<Correction>> {
-        let key = norm(text, self.meta().norm());
-        let allowed = max_distance(key.chars().count());
-        if key.is_empty() || limit == 0 {
-            return Ok(Vec::new());
-        }
-        let index = self.fuzzy_index()?;
-        let length = key.chars().count();
-        let mut candidates = index.search(&key, allowed);
-        // Equal distance: same letters first (a swap, `teh` -> `the`, keeps
-        // them; a substitution does not), then rank, length, key.
-        candidates.sort_by_key(|(candidate, distance, rank)| {
-            (
-                *distance,
-                letter_difference(&key, candidate),
-                *rank,
-                candidate.chars().count().abs_diff(length),
-                candidate.clone(),
-            )
-        });
-        let db = self.db();
-        let mut statement = db.prepare_cached(
-            "SELECT l.form, l.kind, e.key, e.headword, e.homograph, l.anchor FROM lookup l \
-             JOIN entries e ON e.id = l.entry WHERE l.norm = ? ORDER BY l.rank, l.entry LIMIT 1",
-        )?;
-        let mut seen = HashSet::new();
-        let mut found = Vec::new();
-        // One result per candidate key, its best row: homographs and the
-        // forms of one entry would otherwise fill the list with one word.
-        for (candidate, distance, _) in candidates {
-            let rows = statement.query_map([&candidate], |row| {
-                Ok(Suggestion {
-                    form: row.get(0)?,
-                    kind: row.get(1)?,
-                    entry: row.get(2)?,
-                    headword: row.get(3)?,
-                    homograph: row.get(4)?,
-                    anchor: row.get(5)?,
-                })
-            })?;
-            for row in rows {
-                let suggestion = row?;
-                if seen.insert((suggestion.entry.clone(), suggestion.anchor)) {
-                    found.push(Correction {
-                        suggestion,
-                        distance,
-                    });
-                    if found.len() == limit {
-                        return Ok(found);
-                    }
-                }
-            }
-        }
-        Ok(found)
-    }
-
-    /// Build the correction index now (about 0.1 s for Oxford) instead of on
-    /// the first [`Pack::correct`]; returns the number of keys.
-    pub fn prepare_correction(&self) -> Result<usize> {
-        Ok(self.fuzzy_index()?.len())
-    }
-
-    fn fuzzy_index(&self) -> Result<&FuzzyIndex> {
-        if let Some(index) = self.fuzzy.get() {
-            return Ok(index);
-        }
-        let index = FuzzyIndex::build(self)?;
-        Ok(self.fuzzy.get_or_init(|| index))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_pack::TestPack;
 
-    fn pack(words: &[(&str, i64)]) -> Pack {
-        let test = TestPack::new();
-        for (id, (word, rank)) in words.iter().enumerate() {
-            let id = id as i64 + 1;
-            let json = format!(r#"{{"type":"entry","id":"k{id}","lang":"en"}}"#);
-            test.entry(id, word, None, &json).lookup(
-                &norm(word, crate::text::Scheme::Fold),
-                *rank,
-                id,
-                0,
-                word,
-                "headword",
-            );
-        }
-        test.open()
+    fn index(keys: &[(&str, i64)]) -> FuzzyIndex {
+        let mut keys = keys.to_vec();
+        keys.sort();
+        FuzzyIndex::build(keys.into_iter()).unwrap()
     }
 
-    fn corrections(pack: &Pack, text: &str) -> Vec<(String, usize)> {
-        pack.correct(text, 10)
-            .unwrap()
-            .into_iter()
-            .map(|c| (c.suggestion.form, c.distance))
-            .collect()
+    fn found(index: &FuzzyIndex, query: &str, limit: usize) -> Vec<(String, usize, u64)> {
+        let mut found = index.search(query, limit);
+        found.sort();
+        found
     }
 
     #[test]
     fn finds_insertions_deletions_substitutions_and_swaps() {
-        let pack = pack(&[
-            ("receive", 0),
-            ("recipe", 3),
-            ("relieve", 1),
-            ("the", 0),
-            ("café", 2),
-        ]);
-        let found = |text: &str| corrections(&pack, text);
-        let recieve = [
-            ("receive".into(), 1),
-            ("relieve".into(), 1),
-            ("recipe".into(), 2),
-        ];
-        assert_eq!(found("recieve"), recieve); // equal distance: lower rank first
+        let index = index(&[("receive", 0), ("recipe", 3), ("relieve", 1), ("the", 0)]);
         assert_eq!(
-            found("receeve"),
-            [("receive".into(), 1), ("relieve".into(), 2)]
+            found(&index, "recieve", 2),
+            [
+                ("receive".into(), 1, 0),
+                ("recipe".into(), 2, 3),
+                ("relieve".into(), 1, 1)
+            ]
         );
-        assert_eq!(found("teh"), [("the".into(), 1)]);
-        assert_eq!(found("cafe"), [("café".into(), 0)]);
-        assert_eq!(found("recipee")[0], ("recipe".into(), 1));
-        assert!(found("th").is_empty(), "two letters: exact only");
-        assert!(found("xyzzyq").is_empty());
+        assert_eq!(found(&index, "teh", 1), [("the".into(), 1, 0)]);
+        assert_eq!(found(&index, "recipee", 1), [("recipe".into(), 1, 3)]);
+        assert!(found(&index, "th", 0).is_empty());
+        assert!(found(&index, "xyzzyq", 2).is_empty());
     }
 
     #[test]
     fn walks_multi_byte_keys() {
-        let pack = pack(&[("naïve", 0), ("苹果", 0), ("苹果树", 1)]);
-        let index = pack.fuzzy_index().unwrap();
-        let mut found = index.search("苹果", 1);
-        found.sort();
-        assert_eq!(found, [("苹果".into(), 0, 0), ("苹果树".into(), 1, 1)]);
-        assert_eq!(index.search("naive", 1)[0].1, 0); // norm folds ï
+        let index = index(&[("naive", 0), ("苹果", 0), ("苹果树", 1)]);
+        assert_eq!(
+            found(&index, "苹果", 1),
+            [("苹果".into(), 0, 0), ("苹果树".into(), 1, 1)]
+        );
+        assert_eq!(found(&index, "naïve", 1), [("naive".into(), 1, 0)]);
     }
 
     #[test]
-    fn prefers_swaps_among_equal_distances() {
-        let pack = pack(&[("tea", 0), ("ten", 0), ("the", 0)]);
-        assert_eq!(corrections(&pack, "teh")[0], ("the".into(), 1));
+    fn counts_letters_both_ways() {
         assert_eq!(letter_difference("teh", "the"), 0);
         assert_eq!(letter_difference("teh", "tea"), 2);
-    }
-
-    #[test]
-    fn returns_one_result_per_key() {
-        let test = TestPack::new();
-        for id in 1..=3 {
-            let json = format!(r#"{{"type":"entry","id":"k{id}","lang":"en"}}"#);
-            test.entry(id, "right", Some(id), &json)
-                .lookup("right", id, id, 0, "right", "headword");
-        }
-        test.lookup("right", 9, 1, 2, "right", "phrase");
-        let found = test.open().correct("rihgt", 10).unwrap();
-        let entries: Vec<_> = found.iter().map(|c| c.suggestion.entry.as_str()).collect();
-        assert_eq!(entries, ["k1"]);
+        assert_eq!(letter_difference("ab", "abc"), 1);
     }
 
     #[test]

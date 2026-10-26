@@ -1,34 +1,34 @@
-//! Spelling correction on the Oxford pack.
+//! Close spellings on the Oxford pack: common misspellings put the word first.
 
 mod common;
 
-use std::time::Instant;
-
 use common::load;
+use zdict_core::Group;
 
 #[test]
 fn common_misspellings_find_the_word_first() {
     let Some((pack, _)) = load("pack.json") else {
         return;
     };
-    let started = Instant::now();
-    let keys = pack.prepare_correction().unwrap();
-    eprintln!("correction index: {keys} keys in {:?}", started.elapsed());
     let cases = [
         ("recieve", "receive"),
         ("accomodate", "accommodate"),
         ("definately", "definitely"),
-        ("teh", "the"),
         ("beleive", "believe"),
         ("occurence", "occurrence"),
         ("seperate", "separate"),
         ("goverment", "government"),
         ("wierd", "weird"),
         ("untill", "until"),
+        ("harbuor", "harbour"),
     ];
     for (typed, wanted) in cases {
-        let found = pack.correct(typed, 5).unwrap();
-        let forms: Vec<_> = found.iter().map(|c| c.suggestion.form.as_str()).collect();
-        assert_eq!(forms.first(), Some(&wanted), "{typed}: {forms:?}");
+        let found = pack.words(typed, 5).unwrap();
+        let forms: Vec<_> = found.iter().map(|w| (w.group, w.form.as_str())).collect();
+        assert_eq!(
+            forms.first(),
+            Some(&(Group::Close, wanted)),
+            "{typed}: {forms:?}"
+        );
     }
 }

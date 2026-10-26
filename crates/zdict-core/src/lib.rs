@@ -7,7 +7,6 @@ mod entry;
 mod error;
 mod fuzzy;
 mod link;
-mod lookup;
 mod meta;
 mod node;
 mod pack;
@@ -18,11 +17,11 @@ mod resource;
 mod test_pack;
 pub mod text;
 pub mod theme;
+mod words;
 
 pub use error::{Error, MetaProblem, Result};
-pub use fuzzy::{Correction, max_distance};
+pub use fuzzy::max_distance;
 pub use link::{Focus, Link, LinkTarget, plain};
-pub use lookup::Suggestion;
 pub use meta::Meta;
 pub use node::{Attr, Child, Entry, Node};
 pub use pack::Pack;
@@ -32,6 +31,7 @@ pub use render::{
     TextStyle, interpolate,
 };
 pub use resource::encode_uri_component;
+pub use words::{Group, IndexKind, Word};
 
 /// `PRAGMA application_id` of a pack: ASCII `ZDPK`.
 pub const APPLICATION_ID: u32 = 0x5A44_504B;
