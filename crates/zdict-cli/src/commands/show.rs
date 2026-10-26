@@ -22,10 +22,10 @@ pub(super) fn resolve(pack: &Pack, key_or_word: &str) -> Result<Entry> {
         Ok(entry) => entry,
         Err(Error::MissingEntry(_)) => {
             let hit = pack
-                .suggest(key_or_word, 1)?
+                .words(key_or_word, 1)?
                 .into_iter()
                 .next()
-                .with_context(|| format!("no entry or suggestion for {key_or_word:?}"))?;
+                .with_context(|| format!("no entry or word-list row for {key_or_word:?}"))?;
             pack.entry(&hit.entry)?
         }
         Err(error) => return Err(error.into()),

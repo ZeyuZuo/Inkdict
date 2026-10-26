@@ -47,37 +47,42 @@ impl Drop for Queries {
 }
 
 #[test]
-fn correct_recieve_prefers_receive_and_supports_json_and_limits() {
+fn words_recieve_prefers_receive_and_supports_json_and_limits() {
     let Some(pack) = pack() else { return };
     let output = success(
         command()
             .arg("--pack")
             .arg(&pack)
-            .args(["correct", "recieve"])
+            .args(["words", "recieve"])
             .output()
             .unwrap(),
     );
     let fields: Vec<_> = output.lines().next().unwrap().split('\t').collect();
-    assert_eq!(fields.len(), 4);
-    assert_eq!(fields[0], "receive");
-    assert_eq!(fields[1], "1");
-    assert_eq!(fields[2].split_whitespace().next(), Some("receive"));
-    assert!(fields[3].contains('#'));
-    assert!(output.lines().count() <= 10);
+    assert_eq!(fields.len(), 7);
+    assert_eq!(&fields[..4], ["close", "receive", "headword", "receive"]);
+    assert!(fields[4].contains('#'));
+    assert_eq!(fields[6], "1");
+    assert!(output.lines().count() <= 20);
     for limit in [0, 1] {
         let output = success(
             command()
                 .arg("--pack")
                 .arg(&pack)
-                .args(["correct", "recieve", "-n", &limit.to_string(), "--json"])
+                .args(["words", "recieve", "-n", &limit.to_string(), "--json"])
                 .output()
                 .unwrap(),
         );
-        let hits: Value = serde_json::from_str(&output).unwrap();
-        assert_eq!(hits.as_array().unwrap().len(), limit);
+        let words: Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(words.as_array().unwrap().len(), limit);
         if limit == 1 {
-            assert_eq!(hits[0]["form"], "receive");
-            assert_eq!(hits[0]["distance"], 1);
+            assert_eq!(words[0]["group"], "close");
+            assert_eq!(words[0]["form"], "receive");
+            assert_eq!(words[0]["distance"], 1);
+            let core = zdict_core::Pack::open(&pack).unwrap();
+            assert_eq!(
+                words,
+                serde_json::to_value(core.words("recieve", 1).unwrap()).unwrap()
+            );
         }
     }
 }
@@ -224,14 +229,39 @@ fn eval_correct_counts_hits_and_misses_and_rejects_bad_tsv() {
 }
 
 #[test]
-fn correct_and_render_benchmarks_report_timings_and_preparation() {
+fn eval_correct_counts_only_the_first_five_rows_across_groups() {
     let Some(pack) = pack() else { return };
-    let queries = Queries::new("bench-correct", "recieve\treceive\n\naple\tapple\n");
+    let queries = Queries::new("eval-groups", "lead\tplead\n");
+    let output = success(
+        command()
+            .arg("--pack")
+            .arg(pack)
+            .args(["eval", "correct"])
+            .arg(&queries.0)
+            .arg("--json")
+            .output()
+            .unwrap(),
+    );
+    let stats: Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(stats["top1"], 0);
+    assert_eq!(stats["top5"], 0);
+    assert_eq!(stats["misses"], 1);
+    let got = stats["first_misses"][0]["got"].as_array().unwrap();
+    assert_eq!(got[0], "lead");
+    assert!(got.len() > 5);
+    assert!(!got[..5].iter().any(|headword| headword == "plead"));
+    assert!(got[5..].iter().any(|headword| headword == "plead"));
+}
+
+#[test]
+fn words_and_render_benchmarks_report_timings_and_preparation() {
+    let Some(pack) = pack() else { return };
+    let queries = Queries::new("bench-words", "recieve\treceive\n\naple\tapple\n");
     let output = success(
         command()
             .arg("--pack")
             .arg(&pack)
-            .args(["bench", "correct"])
+            .args(["bench", "words"])
             .arg(&queries.0)
             .args(["--repeat", "2", "--json"])
             .output()
@@ -252,20 +282,22 @@ fn correct_and_render_benchmarks_report_timings_and_preparation() {
     );
     let entry: Value = serde_json::from_str(&output).unwrap();
     std::fs::write(&queries.0, format!("{}\n", entry["id"].as_str().unwrap())).unwrap();
-    let output = success(
-        command()
-            .arg("--pack")
-            .arg(pack)
-            .args(["bench", "render"])
-            .arg(&queries.0)
-            .arg("--json")
-            .output()
-            .unwrap(),
-    );
-    let stats: Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(stats["count"], 1);
-    assert!(stats["p50_ms"].as_f64().unwrap() > 0.0);
-    assert!(stats.get("prepare_ms").is_none());
+    for kind in ["entry", "render"] {
+        let output = success(
+            command()
+                .arg("--pack")
+                .arg(&pack)
+                .args(["bench", kind])
+                .arg(&queries.0)
+                .arg("--json")
+                .output()
+                .unwrap(),
+        );
+        let stats: Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(stats["count"], 1);
+        assert!(stats["p50_ms"].as_f64().unwrap() > 0.0);
+        assert!(stats.get("prepare_ms").is_none());
+    }
 }
 
 #[test]
@@ -278,55 +310,76 @@ fn missing_pack_is_an_error() {
 }
 
 #[test]
-fn went_suggests_go_as_an_inflected_form() {
+fn words_went_lists_go_as_an_inflection() {
     let Some(pack) = pack() else { return };
     let output = success(
         command()
             .arg("--pack")
             .arg(pack)
-            .args(["suggest", "went"])
+            .args(["words", "went"])
             .output()
             .unwrap(),
     );
     assert!(output.lines().any(|line| {
         let fields: Vec<_> = line.split('\t').collect();
-        fields.len() == 4
-            && fields[0] == "went"
-            && fields[1] == "infl_form"
-            && fields[2].split_whitespace().next() == Some("go")
-            && fields[3].contains('#')
+        fields.len() == 6
+            && fields[..4] == ["prefix", "went", "inflection", "go"]
+            && fields[4].contains('#')
     }));
 }
 
 #[test]
-fn chinese_search_returns_hits_and_supports_json_and_columns() {
+fn words_lead_keeps_homographs_and_limits_each_group() {
     let Some(pack) = pack() else { return };
     let output = success(
         command()
             .arg("--pack")
             .arg(&pack)
-            .args(["search", "苹果"])
+            .args(["words", "lead"])
             .output()
             .unwrap(),
     );
-    assert!(!output.is_empty());
-    for line in output.lines() {
-        let fields: Vec<_> = line.split('\t').collect();
-        assert_eq!(fields.len(), 4);
-        assert_eq!(fields[0].split('.').nth(1).unwrap().len(), 4);
-        assert!(fields[3].starts_with("zh"));
+    for homograph in [1, 2] {
+        assert!(output.lines().any(|line| {
+            let fields: Vec<_> = line.split('\t').collect();
+            fields.len() == 6
+                && fields[..3] == ["prefix", "lead", "headword"]
+                && fields[3] == format!("lead {homograph}")
+        }));
     }
-    for column in ["text", "example"] {
+    for limit in [0, 1, 3, 20] {
         let output = success(
             command()
                 .arg("--pack")
                 .arg(&pack)
-                .args(["search", "苹果", "--column", column, "-n", "3", "--json"])
+                .args(["words", "lead", "-n", &limit.to_string(), "--json"])
                 .output()
                 .unwrap(),
         );
-        let hits: Value = serde_json::from_str(&output).unwrap();
-        assert!(hits.as_array().unwrap().len() <= 3);
+        let words: Value = serde_json::from_str(&output).unwrap();
+        let words = words.as_array().unwrap();
+        for group in ["prefix", "contains", "close"] {
+            assert!(words.iter().filter(|word| word["group"] == group).count() <= limit);
+        }
+        if limit == 0 {
+            assert!(words.is_empty());
+        } else {
+            assert_eq!(
+                words
+                    .iter()
+                    .filter(|word| word["group"] == "prefix")
+                    .count(),
+                limit
+            );
+            assert!(words.iter().any(|word| word["group"] == "contains"));
+        }
+        if limit >= 3 {
+            for homograph in [1, 2] {
+                assert!(words.iter().any(|word| word["group"] == "prefix"
+                    && word["form"] == "lead"
+                    && word["homograph"] == homograph));
+            }
+        }
     }
 }
 
@@ -356,12 +409,26 @@ fn show_resolves_words_and_keys_to_entry_json() {
     let output = success(
         command()
             .arg("--pack")
-            .arg(pack)
+            .arg(&pack)
             .args(["show", key])
             .output()
             .unwrap(),
     );
     assert!(output.lines().any(|line| line.trim() == "headword: apple"));
+    let core = zdict_core::Pack::open(&pack).unwrap();
+    for query in ["went", "recieve"] {
+        let words = core.words(query, 1).unwrap();
+        let output = success(
+            command()
+                .arg("--pack")
+                .arg(&pack)
+                .args(["show", query, "--json"])
+                .output()
+                .unwrap(),
+        );
+        let entry: Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(entry["id"], words[0].entry);
+    }
 }
 
 #[test]
@@ -380,21 +447,28 @@ fn pack_environment_fallback_and_explicit_override() {
     let output = success(
         command()
             .env("ZDICT_PACK", "missing-pack.zdpack")
-            .args(["suggest", "went", "--pack"])
+            .args(["words", "went", "--pack"])
             .arg(pack)
             .args(["-n", "1", "--json"])
             .output()
             .unwrap(),
     );
     let hits: Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(hits.as_array().unwrap().len(), 1);
+    assert_eq!(
+        hits.as_array()
+            .unwrap()
+            .iter()
+            .filter(|word| word["group"] == "prefix")
+            .count(),
+        1
+    );
     assert_eq!(hits[0]["form"], "went");
 }
 
 #[test]
 fn repeat_zero_is_rejected_before_opening_a_pack() {
     let output = command()
-        .args(["bench", "suggest", "queries.txt", "--repeat", "0"])
+        .args(["bench", "words", "queries.txt", "--repeat", "0"])
         .output()
         .unwrap();
     assert!(!output.status.success());
@@ -409,7 +483,7 @@ fn benchmarks_count_repeats_and_reject_empty_inputs() {
         command()
             .arg("--pack")
             .arg(&pack)
-            .args(["bench", "suggest"])
+            .args(["bench", "words"])
             .arg(&queries.0)
             .args(["--repeat", "2", "--json"])
             .output()

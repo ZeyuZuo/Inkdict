@@ -63,13 +63,7 @@ fn call(dictionary: &mut Dictionary, name: &str, args: &Value) -> Result<Value, 
     };
     match name {
         "pack_info" => to_json(serde_json::to_value(dictionary.info())),
-        "suggest" => to_json(serde_json::to_value(dictionary.suggest(&text(), limit())?)),
-        "correct" => to_json(serde_json::to_value(dictionary.correct(&text(), limit())?)),
-        "search" => to_json(serde_json::to_value(dictionary.search(
-            &text(),
-            limit(),
-            args["column"].as_str(),
-        )?)),
+        "words" => to_json(serde_json::to_value(dictionary.words(&text(), limit())?)),
         "entry" => to_json(serde_json::to_value(
             dictionary.entry(args["key"].as_str().unwrap_or_default())?,
         )),

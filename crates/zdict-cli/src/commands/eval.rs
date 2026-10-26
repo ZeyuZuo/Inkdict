@@ -17,13 +17,10 @@ pub fn run(pack: &Pack, path: &Path, json: bool, out: &mut impl Write) -> Result
     let mut top5 = 0;
     let mut misses = Vec::new();
     for &(typo, expected) in &cases {
-        let hits = pack.correct(typo, 5)?;
-        let got: Vec<_> = hits
-            .iter()
-            .map(|hit| hit.suggestion.headword.as_str())
-            .collect();
+        let hits = pack.words(typo, 5)?;
+        let got: Vec<_> = hits.iter().map(|hit| hit.headword.as_str()).collect();
         top1 += usize::from(got.first().copied() == Some(expected));
-        if got.contains(&expected) {
+        if got.iter().take(5).any(|headword| *headword == expected) {
             top5 += 1;
         } else if misses.len() < 20 {
             misses.push(json!({ "typo": typo, "expected": expected, "got": got }));

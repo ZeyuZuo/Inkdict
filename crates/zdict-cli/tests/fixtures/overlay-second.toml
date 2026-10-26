@@ -1,6 +1,6 @@
 [meta]
 format = "zdict-theme"
-version = 0
+version = 1
 
 [style.entry]
 size = 1.75

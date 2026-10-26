@@ -11,7 +11,7 @@ use std::io::Write;
 
 use anyhow::Result;
 use serde_json::{Value, json};
-use zdict_core::Pack;
+use zdict_core::{Group, Pack};
 
 use crate::args::{Command, EvalCommand};
 
@@ -32,60 +32,32 @@ pub fn run(pack: &Pack, command: Command, json: bool, out: &mut impl Write) -> R
                 writeln!(out, "  {name}")?;
             }
         }
-        Command::Suggest { text, limit } => {
-            let hits = pack.suggest(&text, limit)?;
+        Command::Words { text, limit } => {
+            let words = pack.words(&text, limit)?;
             if json {
-                return print_json(out, &serde_json::to_value(hits)?);
+                return print_json(out, &serde_json::to_value(words)?);
             }
-            for hit in hits {
-                writeln!(
+            for word in words {
+                let group = match word.group {
+                    Group::Prefix => "prefix",
+                    Group::Contains => "contains",
+                    Group::Close => "close",
+                };
+                write!(
                     out,
-                    "{}\t{}\t{}\t{}#{}",
-                    hit.form,
-                    hit.kind,
-                    headword(&hit.headword, hit.homograph),
-                    hit.entry,
-                    hit.anchor
+                    "{}\t{}\t{}\t{}\t{}#{}\t{}",
+                    group,
+                    word.form,
+                    word.kind.name(),
+                    headword(&word.headword, word.homograph),
+                    word.entry,
+                    word.anchor,
+                    word.summary.as_deref().unwrap_or_default()
                 )?;
-            }
-        }
-        Command::Search {
-            text,
-            limit,
-            column,
-        } => {
-            let hits = pack.search(&text, limit, column.map(Into::into))?;
-            if json {
-                return print_json(out, &serde_json::to_value(hits)?);
-            }
-            for hit in hits {
-                writeln!(
-                    out,
-                    "{:.4}\t{}\t{}#{}\t{}",
-                    hit.score,
-                    headword(&hit.headword, hit.homograph),
-                    hit.entry,
-                    hit.anchor,
-                    hit.lang
-                )?;
-            }
-        }
-        Command::Correct { text, limit } => {
-            let hits = pack.correct(&text, limit)?;
-            if json {
-                return print_json(out, &serde_json::to_value(hits)?);
-            }
-            for correction in hits {
-                let hit = correction.suggestion;
-                writeln!(
-                    out,
-                    "{}\t{}\t{}\t{}#{}",
-                    hit.form,
-                    correction.distance,
-                    headword(&hit.headword, hit.homograph),
-                    hit.entry,
-                    hit.anchor
-                )?;
+                if let Some(distance) = word.distance {
+                    write!(out, "\t{distance}")?;
+                }
+                writeln!(out)?;
             }
         }
         Command::Show { key_or_word } => return show::run(pack, &key_or_word, json, out),

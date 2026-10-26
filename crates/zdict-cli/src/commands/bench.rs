@@ -26,7 +26,7 @@ pub fn run(
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| match kind {
-            BenchKind::Correct => line.split('\t').next().unwrap(),
+            BenchKind::Words => line.split('\t').next().unwrap(),
             _ => line,
         })
         .collect();
@@ -44,9 +44,9 @@ pub fn run(
         .len()
         .checked_mul(repeat)
         .context("query count times --repeat is too large")?;
-    let prepare_ms = if matches!(kind, BenchKind::Correct) {
+    let prepare_ms = if matches!(kind, BenchKind::Words) {
         let started = Instant::now();
-        pack.prepare_correction()?;
+        pack.prepare_words()?;
         Some(started.elapsed().as_secs_f64() * 1000.0)
     } else {
         None
@@ -93,17 +93,11 @@ pub fn run(
 /// Include result construction and disposal in each timed call, in both readers.
 fn call(pack: &Pack, kind: BenchKind, query: &str, renderer: Option<&Renderer<'_>>) -> Result<()> {
     match kind {
-        BenchKind::Suggest => {
-            pack.suggest(query, 20)?;
-        }
-        BenchKind::Search => {
-            pack.search(query, 20, None)?;
-        }
         BenchKind::Entry => {
             pack.entry(query)?;
         }
-        BenchKind::Correct => {
-            pack.correct(query, 10)?;
+        BenchKind::Words => {
+            pack.words(query, 20)?;
         }
         BenchKind::Render => {
             let entry = pack.entry(query)?;

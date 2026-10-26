@@ -2,7 +2,8 @@
 """Generate repeatable query files and benchmark the Python reference reader.
 
     ../.venv/bin/python scripts/bench.py queries
-    ../.venv/bin/python scripts/bench.py run suggest oxdata/bench/suggest.txt
+    ../.venv/bin/python scripts/bench.py run words oxdata/bench/words.txt
+    ../.venv/bin/python scripts/bench.py run entry oxdata/bench/entry.txt
 
 Both readers warm up once on the first 100 nonblank queries, then time each
 call (including result disposal). Percentiles use the nearest-rank method.
@@ -19,27 +20,7 @@ import time
 ROOT = Path(__file__).resolve().parent.parent
 PACK = ROOT / 'oxdata' / 'oalecd10.zdpack'
 BENCH = ROOT / 'oxdata' / 'bench'
-KINDS = ('suggest', 'search', 'entry')
-
-
-def nodes(node, lang=''):
-    """Walk nodes with their inherited language, skipping string children."""
-    if isinstance(node, dict):
-        lang = node.get('lang', lang)
-        yield node, lang
-        for child in node.get('children', []):
-            yield from nodes(child, lang)
-
-
-def chinese_runs(pack, keys, text):
-    """Sorted CJK runs from Chinese definitions in the pack itself."""
-    cjk = re.compile(f'[{text.CJK_CHARS}]+')
-    runs = set()
-    for key in keys:
-        for node, lang in nodes(pack.entry(key)):
-            if node.get('type') == 'definition' and lang.startswith('zh'):
-                runs.update(cjk.findall(text.plain(node)))
-    return sorted(runs)
+KINDS = ('words', 'entry')
 
 
 def write_queries(pack, text):
@@ -49,15 +30,9 @@ def write_queries(pack, text):
         'SELECT headword FROM entries WHERE headword != ? ORDER BY headword, key', ('',))]
     keys = [row[0] for row in pack.db.execute('SELECT key FROM entries ORDER BY key')]
     prefixes = [word[:rng.randint(1, len(word))] for word in rng.sample(headwords, 2000)]
-    searches = rng.sample([word for word in headwords if word.isalpha()], 700)
-    runs = chinese_runs(pack, keys, text)
-    for run in rng.sample(runs, 300):
-        length = rng.randint(1, min(2, len(run)))
-        start = rng.randint(0, len(run) - length)
-        searches.append(run[start:start + length])
     entries = rng.sample(keys, 2000)
     BENCH.mkdir(parents=True, exist_ok=True)
-    for kind, queries in zip(KINDS, (prefixes, searches, entries)):
+    for kind, queries in zip(KINDS, (prefixes, entries)):
         path = BENCH / f'{kind}.txt'
         path.write_text('\n'.join(queries) + '\n', encoding='utf-8')
         print(f'wrote {path} ({len(queries):,} queries)')
@@ -119,12 +94,22 @@ def statistics(samples, total_seconds):
 
 def run(pack, kind, path, repeat, as_json):
     """Warm up, then time the same reader calls as `zdict bench`."""
-    queries = [line for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
+    queries = [line.split('\t', 1)[0] if kind == 'words' else line
+               for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
     if not queries:
         raise ValueError(f'{path} contains no queries')
-    call = {'suggest': lambda query: pack.suggest(query, 20),
-            'search': lambda query: pack.search(query, 20),
+    if any(not query.strip() for query in queries):
+        raise ValueError(f'{path} contains an empty query in its first TSV column')
+    call = {'words': lambda query: pack.words(query, 20),
             'entry': pack.entry}[kind]
+    prepare_ms = None
+    if kind == 'words':
+        started = time.perf_counter()
+        # The reference reader lazily loads lookup rows and entry metadata.
+        rows = pack._all_rows()
+        if rows:
+            pack._entry_info(rows[0][2])
+        prepare_ms = (time.perf_counter() - started) * 1000
     for query in queries[:100]:
         call(query)
     samples = []
@@ -135,6 +120,8 @@ def run(pack, kind, path, repeat, as_json):
             call(query)
             samples.append((time.perf_counter() - started) * 1000)
     stats = statistics(samples, time.perf_counter() - total)
+    if prepare_ms is not None:
+        stats['prepare_ms'] = prepare_ms
     if as_json:
         print(json.dumps(stats, ensure_ascii=False, indent=2))
     else:

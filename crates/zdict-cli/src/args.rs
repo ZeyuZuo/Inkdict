@@ -29,27 +29,13 @@ pub enum Command {
         #[arg(long, default_value_t = 1430)]
         port: u16,
     },
-    /// Suggest forms starting with TEXT.
-    Suggest {
+    /// List prefix matches, contained forms and close spellings.
+    Words {
         text: String,
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
     },
-    /// Correct spelling, closest forms first.
-    Correct {
-        text: String,
-        #[arg(short = 'n', long, default_value_t = 10)]
-        limit: usize,
-    },
-    /// Search definitions, translations and examples.
-    Search {
-        text: String,
-        #[arg(short = 'n', long, default_value_t = 20)]
-        limit: usize,
-        #[arg(long, value_enum)]
-        column: Option<SearchColumn>,
-    },
-    /// Show an entry by key, or the first suggestion for a word.
+    /// Show an entry by key, or the first word-list row.
     Show { key_or_word: String },
     /// Print a themed render tree as pretty JSON.
     Render {
@@ -77,26 +63,9 @@ pub enum Command {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
-pub enum SearchColumn {
-    Text,
-    Example,
-}
-
-impl From<SearchColumn> for zdict_core::Column {
-    fn from(column: SearchColumn) -> Self {
-        match column {
-            SearchColumn::Text => Self::Text,
-            SearchColumn::Example => Self::Example,
-        }
-    }
-}
-
-#[derive(Clone, Copy, ValueEnum)]
 pub enum BenchKind {
-    Suggest,
-    Search,
+    Words,
     Entry,
-    Correct,
     Render,
 }
 
