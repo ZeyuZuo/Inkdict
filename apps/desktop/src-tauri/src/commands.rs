@@ -4,8 +4,10 @@
 use std::path::PathBuf;
 
 use tauri::State;
-use zdict_app::{AppError, Config, Dictionary, EntryView, PackInfo, Result, Settings, Target};
-use zdict_core::{Correction, Hit, Link, Suggestion};
+use zdict_app::{
+    AppError, Config, Dictionary, EntryView, PackInfo, Result, Settings, Target, WordView,
+};
+use zdict_core::Link;
 
 use crate::AppState;
 
@@ -27,25 +29,8 @@ pub fn open_pack(state: State<'_, AppState>, path: PathBuf) -> Result<PackInfo> 
 }
 
 #[tauri::command]
-pub fn suggest(state: State<'_, AppState>, text: String, limit: usize) -> Result<Vec<Suggestion>> {
-    with(&state, |dictionary| dictionary.suggest(&text, limit))
-}
-
-#[tauri::command]
-pub fn correct(state: State<'_, AppState>, text: String, limit: usize) -> Result<Vec<Correction>> {
-    with(&state, |dictionary| dictionary.correct(&text, limit))
-}
-
-#[tauri::command]
-pub fn search(
-    state: State<'_, AppState>,
-    text: String,
-    limit: usize,
-    column: Option<String>,
-) -> Result<Vec<Hit>> {
-    with(&state, |dictionary| {
-        dictionary.search(&text, limit, column.as_deref())
-    })
+pub fn words(state: State<'_, AppState>, text: String, limit: usize) -> Result<Vec<WordView>> {
+    with(&state, |dictionary| dictionary.words(&text, limit))
 }
 
 #[tauri::command]

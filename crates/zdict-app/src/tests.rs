@@ -12,18 +12,31 @@ fn oxford() -> Option<Dictionary> {
     Some(Dictionary::open(&path, Settings::default()).unwrap())
 }
 
+const TYPES: &str = "[meta]\nformat = \"zdict-types\"\nversion = 1\n\
+                     [types.pron]\nkind = \"inline\"\nroles = [\"pronunciation\"]\n\
+                     [types.ipa]\nkind = \"inline\"\nroles = [\"pronunciation\"]\n\
+                     [types.sense]\nkind = \"block\"\n";
+
 #[test]
-fn overlay_hides_what_the_settings_ask() {
+fn overlay_hides_the_types_of_each_switched_off_role() {
+    let registry = Registry::parse(TYPES).unwrap();
     let settings = Settings {
-        hide_chinese: true,
+        hide_pronunciation: true,
         hide_examples: true,
         ..Settings::default()
     };
-    let overlay = settings.overlay();
-    assert!(overlay.contains("[style.\"*[lang=zh]\"]\ndisplay = \"none\""));
-    assert!(overlay.contains("[style.\"example\"]"));
-    assert!(!overlay.contains("pron_list"));
+    let overlay = settings.overlay(&registry);
+    assert!(overlay.contains("[style.\"ipa\"]\ndisplay = \"none\""));
+    assert!(overlay.contains("[style.\"pron\"]\ndisplay = \"none\""));
+    assert!(!overlay.contains("sense"));
     Theme::parse("settings", &overlay).unwrap();
+    assert_eq!(
+        Switches::of(&registry),
+        Switches {
+            pronunciation: true,
+            example: false
+        }
+    );
 }
 
 #[test]
@@ -42,11 +55,13 @@ fn config_round_trips_and_tolerates_broken_files() {
     assert_eq!(Config::load(&path), config);
     std::fs::write(&path, "{not json").unwrap();
     assert_eq!(Config::load(&path), Config::default());
-    std::fs::write(&path, r#"{"settings":{"hide_chinese":true}}"#).unwrap();
-    assert!(
-        Config::load(&path).settings.hide_chinese,
-        "missing fields take defaults"
-    );
+    // Missing fields take defaults; fields of older versions are ignored.
+    std::fs::write(
+        &path,
+        r#"{"settings":{"hide_chinese":true,"hide_examples":true}}"#,
+    )
+    .unwrap();
+    assert!(Config::load(&path).settings.hide_examples);
 }
 
 #[test]
@@ -54,23 +69,30 @@ fn commands_work_on_the_oxford_pack() {
     let Some(mut dictionary) = oxford() else {
         return;
     };
-    assert_eq!(dictionary.info().entries, Some(39960));
-    let went = dictionary.suggest("went", 5).unwrap();
+    let info = dictionary.info();
+    assert_eq!(info.entries, Some(39960));
+    assert_eq!(info.target_langs, ["zh-Hans"]);
+    assert_eq!(
+        info.switches,
+        Switches {
+            pronunciation: true,
+            example: true
+        }
+    );
+    let went = dictionary.words("went", 5).unwrap();
     let go = went
         .iter()
-        .find(|s| s.headword == "go")
-        .unwrap()
-        .entry
-        .clone();
+        .find(|w| w.target.as_deref() == Some("go"))
+        .unwrap();
+    assert_eq!(go.word.kind, zdict_core::IndexKind::Inflection);
+    let json = serde_json::to_value(go).unwrap();
     assert_eq!(
-        dictionary.correct("recieve", 1).unwrap()[0].suggestion.form,
-        "receive"
+        (json["form"].as_str(), json["target"].as_str()),
+        (Some("went"), Some("go"))
     );
-    assert!(!dictionary.search("苹果", 5, None).unwrap().is_empty());
-    assert_eq!(
-        dictionary.search("x", 5, Some("bogus")).unwrap_err().code,
-        "bad_input"
-    );
+    let go = go.word.entry.clone();
+    let close = dictionary.words("recieve", 1).unwrap();
+    assert_eq!(close[0].word.form, "receive");
     assert_eq!(dictionary.entry("nope").unwrap_err().code, "not_found");
 
     let started = Instant::now();
@@ -78,14 +100,18 @@ fn commands_work_on_the_oxford_pack() {
     let elapsed = started.elapsed();
     eprintln!("entry go: {} bytes of HTML in {elapsed:?}", view.html.len());
     assert!(view.html.contains("data-anchor=\"0\"") && view.html.contains("data-link=\""));
-    assert!(view.html.contains("lang=\"zh-Hans\""));
+    assert!(
+        view.html.contains("class=\"dx-tabs\""),
+        "go has several parts of speech"
+    );
+    assert!(view.html.contains("class=\"dx-example "));
 
     dictionary.set_settings(Settings {
-        hide_chinese: true,
+        hide_examples: true,
         ..Settings::default()
     });
     let hidden = dictionary.entry(&go).unwrap();
-    assert!(!hidden.html.contains("lang=\"zh-Hans\""));
+    assert!(!hidden.html.contains("class=\"dx-example "));
     assert!(hidden.html.len() < view.html.len());
     assert!(dictionary.theme_css().starts_with(":root{--font-"));
 }
@@ -95,7 +121,7 @@ fn follows_links_and_falls_back_to_lookup() {
     let Some(dictionary) = oxford() else {
         return;
     };
-    let apple = dictionary.suggest("apple", 1).unwrap().remove(0).entry;
+    let apple = dictionary.words("apple", 1).unwrap().remove(0).word.entry;
     let lookup = Link {
         entry: None,
         anchor: None,
@@ -122,7 +148,7 @@ fn follows_links_and_falls_back_to_lookup() {
 }
 
 #[test]
-fn desktop_theme_layer_validates_against_the_oxford_registry() {
+fn settings_layer_validates_against_the_oxford_registry() {
     let Some(dictionary) = oxford() else {
         return;
     };

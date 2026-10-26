@@ -12,18 +12,16 @@ Tauri 2。查词由 Tauri 的 Rust 部分（`src-tauri/`）直接调用 `zdict-c
 
 | 命令 | 参数 | 返回 |
 | --- | --- | --- |
-| `pack_info` | — | `{ id, title, entries, source_lang, target_lang }`；没有打开的包时报错 `no_pack` |
+| `pack_info` | — | `{ id, title, entries, source_lang, target_langs, switches }`，`switches` 为 `{ pronunciation, example }`：包里有带该 role 的类型时为 true，设置只显示这些开关；没有打开的包时报错 `no_pack` |
 | `open_pack` | `{ path }` | 同 `pack_info`；成功后记住路径 |
-| `suggest` | `{ text, limit }` | `Suggestion[]`：`{ form, kind, entry, headword, homograph, anchor }` |
-| `correct` | `{ text, limit }` | `Correction[]`：`Suggestion` 的字段加 `distance` |
-| `search` | `{ text, limit, column }`，`column` 为 `null`、`"text"`、`"example"` | `Hit[]`：`{ entry, headword, homograph, anchor, lang, score }` |
+| `words` | `{ text, limit }`，`limit` 是每组的行数上限 | 词表（`spec/pack-v1.md` §5）：`{ group, form, kind, entry, headword, homograph, anchor, readings, summary, summary_lang, distance, rank, target }[]`；`group` 为 `prefix`、`contains`、`close`，`kind` 为索引种类，`target` 是 variant、inflection 指向的词头（与 `form` 相同时为 null） |
 | `entry` | `{ key }` | `{ key, headword, homograph, html }` |
 | `follow` | `{ current, link }`，`link` 为 `{ entry?, anchor?, anchor_type?, text }` | `{ kind: "entry", key, focus }` 或 `{ kind: "lookup", text }`；`focus` 为 `{ kind: "top" }`、`{ kind: "anchor", number }`、`{ kind: "word_family" }` |
 | `settings` | — | `Settings` |
 | `set_settings` | `{ settings }` | `Settings`；之后的 `entry` 按新设置渲染 |
 | `theme_css` | — | 字符串：主题的字体与颜色变量（浅色、深色两套）和 `.dx-*` 基础样式 |
 
-`Settings`：`{ hide_chinese: bool, hide_pronunciation: bool, hide_examples: bool, font_scale: number }`。前三项在 Rust 里变成叠加主题（`spec/v0.md` §7.2）；`font_scale` 由界面用 CSS 变量实现。设置和包的路径保存在应用配置目录的 `config.json`。
+`Settings`：`{ hide_pronunciation: bool, hide_examples: bool, font_scale: number }`。前两项隐藏带 `pronunciation`、`example` role 的类型（`spec/v1.md` §3.2），在 Rust 里变成包主题之上的叠加主题；`font_scale` 由界面用 CSS 变量实现。设置和包的路径保存在应用配置目录的 `config.json`。
 
 错误：命令失败时 reject，值为 `{ code, message }`，`code` 为 `no_pack`、`not_found`、`bad_input`、`internal` 之一。
 
@@ -31,7 +29,8 @@ Tauri 2。查词由 Tauri 的 Rust 部分（`src-tauri/`）直接调用 `zdict-c
 
 `entry` 返回的 HTML 中：
 
-- 带锚点的节点有 `data-anchor="<编号>"`（与联想、检索结果中的 `anchor` 相同，0 是词条本身）；
+- 带锚点的节点有 `data-anchor="<编号>"`（与词表中的 `anchor` 相同，0 是词条本身）；
+- 标签页（`spec/v1.md` §4.4）是 `<div class="dx-tabs">`：先是 `<div class="dx-tab-bar" role="tablist">` 里每页一个 `<button class="dx-tab" role="tab" aria-selected>`，再是每页一个 `<div class="dx-tab-panel" role="tabpanel">`，未选中的带 `hidden`；要打开的锚点在某一页内时，界面切到那一页；
 - 词族节点的 class 是 `dx-word_family`；
 - 发音按钮是 `<button class="dx-icon" data-audio="<url> <url>…">`，按顺序回退；
 - 图片是 `<img src="<首选>" data-fallback="<url>…">`；

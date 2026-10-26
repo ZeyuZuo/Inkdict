@@ -20,8 +20,8 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Open `path`, remember it, and build the correction index in the
-    /// background so the first misspelling is answered quickly too.
+    /// Open `path`, remember it, and read the word index in the background
+    /// so the first keystroke is answered quickly too.
     pub fn open(&self, path: PathBuf) -> zdict_app::Result<()> {
         let mut config = Config::load(&self.config_path);
         let dictionary = Dictionary::open(&path, config.settings.clone())?;
@@ -76,9 +76,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::pack_info,
             commands::open_pack,
-            commands::suggest,
-            commands::correct,
-            commands::search,
+            commands::words,
             commands::entry,
             commands::follow,
             commands::settings,

@@ -10,14 +10,11 @@ use std::path::Path;
 
 use serde::Serialize;
 use zdict_core::theme::{Theme, ThemeStack};
-use zdict_core::{
-    Column, Correction, Error as CoreError, Focus, Hit, Link, LinkTarget, Pack, Registry,
-    Suggestion,
-};
+use zdict_core::{Error as CoreError, Focus, Link, LinkTarget, Pack, Registry, Word};
 use zdict_html::{Markup, entry_html, theme_css};
 
 pub use config::Config;
-pub use settings::{DESKTOP_THEME, Settings};
+pub use settings::{Settings, Switches};
 
 /// A failed command: `code` is one of `no_pack`, `not_found`, `bad_input`,
 /// `internal`.
@@ -69,7 +66,17 @@ pub struct PackInfo {
     pub title: String,
     pub entries: Option<u64>,
     pub source_lang: String,
-    pub target_lang: String,
+    pub target_langs: Vec<String>,
+    /// Display switches the settings show for this pack.
+    pub switches: Switches,
+}
+
+/// A word list row, with the headword a variant or inflection points to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WordView {
+    #[serde(flatten)]
+    pub word: Word,
+    pub target: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -106,20 +113,12 @@ pub struct Dictionary {
 }
 
 impl Dictionary {
-    /// Open a pack and render with its `default` theme (or its first one).
+    /// Open a pack and render with its default theme.
     pub fn open(path: &Path, settings: Settings) -> Result<Self> {
         let pack = Pack::open(path)?;
         let registry = pack.registry()?;
-        let names = pack.theme_names()?;
-        let name = if names.iter().any(|name| name == "default") {
-            "default"
-        } else {
-            names
-                .first()
-                .ok_or_else(|| AppError::new("bad_input", "the pack has no theme"))?
-        };
-        let base = pack.theme(name)?;
-        let stack = settings::stack(&base, &settings);
+        let base = pack.theme(pack.meta().default_theme())?;
+        let stack = settings::stack(&base, &registry, &settings);
         Ok(Dictionary {
             pack,
             registry,
@@ -129,9 +128,9 @@ impl Dictionary {
         })
     }
 
-    /// Build the spelling-correction index now rather than on first use.
+    /// Read the word index now rather than on the first lookup.
     pub fn warm_up(&self) -> Result<()> {
-        self.pack.prepare_correction()?;
+        self.pack.prepare_words()?;
         Ok(())
     }
 
@@ -142,32 +141,21 @@ impl Dictionary {
             title: meta.title().to_owned(),
             entries: meta.entries(),
             source_lang: meta.source_lang().to_owned(),
-            target_lang: meta.target_lang().to_owned(),
+            target_langs: meta.target_langs().to_vec(),
+            switches: Switches::of(&self.registry),
         }
     }
 
-    pub fn suggest(&self, text: &str, limit: usize) -> Result<Vec<Suggestion>> {
-        Ok(self.pack.suggest(text, limit)?)
-    }
-
-    pub fn correct(&self, text: &str, limit: usize) -> Result<Vec<Correction>> {
-        Ok(self.pack.correct(text, limit)?)
-    }
-
-    /// `column`: None, `"text"` or `"example"`.
-    pub fn search(&self, text: &str, limit: usize, column: Option<&str>) -> Result<Vec<Hit>> {
-        let column = match column {
-            None => None,
-            Some("text") => Some(Column::Text),
-            Some("example") => Some(Column::Example),
-            Some(other) => {
-                return Err(AppError::new(
-                    "bad_input",
-                    format!("unknown column {other}"),
-                ));
-            }
-        };
-        Ok(self.pack.search(text, limit, column)?)
+    /// The word list: at most `limit` rows per group (spec/pack-v1.md §5).
+    pub fn words(&self, text: &str, limit: usize) -> Result<Vec<WordView>> {
+        let words = self.pack.words(text, limit)?;
+        Ok(words
+            .into_iter()
+            .map(|word| WordView {
+                target: word.target().map(str::to_owned),
+                word,
+            })
+            .collect())
     }
 
     pub fn entry(&self, key: &str) -> Result<EntryView> {
@@ -184,7 +172,7 @@ impl Dictionary {
         })
     }
 
-    /// Follow a link of the entry `current` (spec v0 §6).
+    /// Follow a link of the entry `current` (spec/v1.md §6).
     pub fn follow(&self, current: &str, link: &Link) -> Result<Target> {
         let current = self.pack.entry(current)?;
         Ok(match self.pack.resolve(&current, link)? {
@@ -205,7 +193,7 @@ impl Dictionary {
     }
 
     pub fn set_settings(&mut self, settings: Settings) -> &Settings {
-        self.stack = settings::stack(&self.base, &settings);
+        self.stack = settings::stack(&self.base, &self.registry, &settings);
         self.settings = settings;
         &self.settings
     }
