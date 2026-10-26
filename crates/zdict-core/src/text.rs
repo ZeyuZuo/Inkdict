@@ -1,4 +1,4 @@
-//! Text keys for lookup and full-text search (spec/pack-v0.md §3.1, §4).
+//! Lookup keys (spec/pack-v1.md §3.1, §3.2).
 //!
 //! A port of OxDic's `oxdic/pack/text.py`, which built the pack: a key
 //! computed here must equal the one stored there. Python's `str.isspace`,
@@ -18,6 +18,33 @@ use unicode_properties::{GeneralCategoryGroup, UnicodeGeneralCategory};
 
 /// Stress marks, syllable dots and the movable-particle arrow of phrasal verbs.
 const MARKS: [char; 5] = ['\u{2c8}', '\u{2cc}', '\u{b7}', '\u{2027}', '\u{2194}'];
+
+/// Lookup key scheme of a pack, `meta.norm` (spec/pack-v1.md §3.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Scheme {
+    /// `fold-1`: diacritics of Latin, Greek, Cyrillic, Hebrew and Arabic letters go.
+    Fold,
+    /// `exact-1`: every combining mark stays.
+    Exact,
+}
+
+impl Scheme {
+    /// The scheme named in `meta.norm`; None for one this reader does not know.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "fold-1" => Some(Scheme::Fold),
+            "exact-1" => Some(Scheme::Exact),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Scheme::Fold => "fold-1",
+            Scheme::Exact => "exact-1",
+        }
+    }
+}
 
 /// Form as shown in a suggestion list: marks removed, spaces collapsed and trimmed.
 pub fn display(text: &str) -> String {
@@ -55,44 +82,6 @@ pub fn norm(text: &str) -> String {
     }
 }
 
-/// FTS5 MATCH expression for user input: each run of CJK characters becomes
-/// a phrase of single characters, every other word a quoted term; terms are
-/// ANDed. Empty when the input has no words.
-pub fn fts_query(text: &str) -> String {
-    let mut terms: Vec<String> = Vec::new();
-    let mut run = String::new();
-    let mut run_is_cjk = false;
-    for ch in text.chars().filter(|ch| !MARKS.contains(ch)) {
-        let cjk = is_cjk(ch);
-        if is_space(ch) || (!run.is_empty() && cjk != run_is_cjk) {
-            push_run(&mut terms, &run, run_is_cjk);
-            run.clear();
-        }
-        if !is_space(ch) {
-            run.push(ch);
-            run_is_cjk = cjk;
-        }
-    }
-    push_run(&mut terms, &run, run_is_cjk);
-    terms.join(" ")
-}
-
-fn push_run(terms: &mut Vec<String>, run: &str, cjk: bool) {
-    if run.is_empty() {
-        return;
-    }
-    if cjk {
-        let chars: Vec<String> = run.chars().map(String::from).collect();
-        terms.push(format!("\"{}\"", chars.join(" ")));
-    } else {
-        terms.extend(
-            run.split(|ch: char| !is_word(ch))
-                .filter(|word| !word.is_empty())
-                .map(|word| format!("\"{word}\"")),
-        );
-    }
-}
-
 /// Python `str.isspace`: Unicode White_Space plus the separators U+001C–U+001F.
 pub(crate) fn is_space(ch: char) -> bool {
     ch.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&ch)
@@ -104,16 +93,6 @@ pub(crate) fn is_alnum(ch: char) -> bool {
         ch.general_category_group(),
         GeneralCategoryGroup::Letter | GeneralCategoryGroup::Number
     )
-}
-
-/// Python `re` `\w` on str: `isalnum` or underscore.
-pub(crate) fn is_word(ch: char) -> bool {
-    ch == '_' || is_alnum(ch)
-}
-
-/// CJK ideographs indexed one character per token (text.py `CJK_CHARS`).
-pub(crate) fn is_cjk(ch: char) -> bool {
-    matches!(ch, '\u{3400}'..='\u{9fff}' | '\u{f900}'..='\u{faff}' | '\u{20000}'..='\u{2ffff}')
 }
 
 #[cfg(test)]
@@ -147,16 +126,6 @@ mod tests {
             assert_eq!(norm(text), key, "{text:?}");
         }
     }
-
-    #[test]
-    fn fts_query_quotes_words_and_spaces_cjk() {
-        assert_eq!(fts_query("apple pie"), r#""apple" "pie""#);
-        assert_eq!(fts_query("don't"), r#""don" "t""#);
-        assert_eq!(fts_query("苹果apple 的"), r#""苹 果" "apple" "的""#);
-        assert_eq!(fts_query("run* AND \"x\""), r#""run" "AND" "x""#);
-        assert_eq!(fts_query("ˈæpl"), r#""æpl""#);
-        assert_eq!(fts_query(" - "), "");
-    }
 }
 
 /// Against Python's tables in oxdata/golden/chars.json (skipped without it).
@@ -189,10 +158,9 @@ mod golden {
         let golden: serde_json::Value = serde_json::from_str(&text).unwrap();
         let assigned = ranges(&golden, "assigned");
         type Check = (&'static str, fn(char) -> bool);
-        let checks: [Check; 4] = [
+        let checks: [Check; 3] = [
             ("isspace", is_space),
             ("isalnum", is_alnum),
-            ("word", is_word),
             ("combining", |ch| canonical_combining_class(ch) != 0),
         ];
         let classes: Vec<_> = checks

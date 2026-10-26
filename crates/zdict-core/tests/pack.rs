@@ -20,10 +20,18 @@ fn meta_matches_reference() {
         .map(|(k, v)| (k.to_owned(), Value::from(v)))
         .collect();
     assert_eq!(Value::Object(meta), golden["meta"]);
+    let list = |key: &str| -> Value {
+        serde_json::from_str(golden["meta"][key].as_str().unwrap()).unwrap()
+    };
     assert_eq!(
-        serde_json::to_value(pack.meta().fts_langs()).unwrap(),
-        golden["fts_langs"]
+        serde_json::to_value(pack.meta().target_langs()).unwrap(),
+        list("target_langs")
     );
+    assert_eq!(
+        serde_json::to_value(pack.meta().themes()).unwrap(),
+        list("themes")
+    );
+    assert_eq!(pack.meta().norm().name(), golden["meta"]["norm"]);
     assert_eq!(pack.meta().entries(), golden["entry_rows"].as_u64());
 }
 

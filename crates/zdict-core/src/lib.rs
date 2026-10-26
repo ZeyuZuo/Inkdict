@@ -1,4 +1,4 @@
-//! ZDict core: reads `.zdpack` dictionary packs (spec/pack-v0.md).
+//! ZDict core: reads `.zdpack` dictionary packs (spec/pack-v1.md).
 //!
 //! Both clients embed this crate: Android through UniFFI, the desktop app
 //! (Tauri 2) directly.
@@ -14,7 +14,6 @@ mod pack;
 mod registry;
 mod render;
 mod resource;
-mod search;
 #[cfg(test)]
 mod test_pack;
 pub mod text;
@@ -33,13 +32,12 @@ pub use render::{
     TextStyle, interpolate,
 };
 pub use resource::encode_uri_component;
-pub use search::{Column, Hit, split_rowid};
 
 /// `PRAGMA application_id` of a pack: ASCII `ZDPK`.
 pub const APPLICATION_ID: u32 = 0x5A44_504B;
 
 /// Pack format version, stored as `PRAGMA user_version`.
-pub const FORMAT_VERSION: u32 = 0;
+pub const FORMAT_VERSION: u32 = 1;
 
 #[cfg(test)]
 mod tests {

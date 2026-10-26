@@ -7,18 +7,20 @@ use rusqlite::{Connection, params};
 use crate::pack::Pack;
 use crate::{APPLICATION_ID, FORMAT_VERSION};
 
-pub(crate) const META: [(&str, &str); 8] = [
+pub(crate) const META: [(&str, &str); 10] = [
     ("format", "zdict-pack"),
-    ("format_version", "0"),
+    ("format_version", "1"),
     ("compression", "zstd"),
-    ("fts_langs", r#"["en", "zh-Hans"]"#),
     ("id", "test"),
     ("title", "Test"),
     ("source_lang", "en"),
-    ("target_lang", "zh-Hans"),
+    ("target_langs", r#"["zh-Hans"]"#),
+    ("themes", r#"["default"]"#),
+    ("norm", "fold-1"),
+    ("unicode_version", "14.0.0"),
 ];
 
-/// The v0 tables of OxDic's `oxdic/pack/build.py`.
+/// The tables of spec/pack-v1.sql.
 const SCHEMA: &str = "
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
 CREATE TABLE files(name TEXT PRIMARY KEY, body BLOB NOT NULL) WITHOUT ROWID;
@@ -27,8 +29,10 @@ CREATE TABLE entries(id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE,
 CREATE TABLE lookup(norm TEXT NOT NULL, rank INTEGER NOT NULL, entry INTEGER NOT NULL,
     anchor INTEGER NOT NULL, form TEXT NOT NULL, kind TEXT NOT NULL,
     PRIMARY KEY(norm, rank, entry, anchor)) WITHOUT ROWID;
-CREATE VIRTUAL TABLE fts USING fts5(text, example, content='',
-    tokenize='porter unicode61 remove_diacritics 2');
+CREATE TABLE summaries(entry INTEGER NOT NULL, anchor INTEGER NOT NULL, lang TEXT NOT NULL,
+    text TEXT NOT NULL, PRIMARY KEY(entry, anchor)) WITHOUT ROWID;
+CREATE TABLE resources(kind TEXT NOT NULL, key TEXT NOT NULL, mime TEXT NOT NULL,
+    body BLOB NOT NULL, PRIMARY KEY(kind, key)) WITHOUT ROWID;
 CREATE TABLE resource_sources(kind TEXT NOT NULL, priority INTEGER NOT NULL,
     template TEXT NOT NULL, PRIMARY KEY(kind, priority)) WITHOUT ROWID;
 ";

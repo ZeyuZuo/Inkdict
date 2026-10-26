@@ -1,6 +1,6 @@
 [package]
 name = "zdict-core"
-description = "Reads ZDict dictionary packs (.zdpack): entries, lookup, full-text search, resources"
+description = "Reads ZDict dictionary packs (.zdpack): entries, word list, summaries, resources"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

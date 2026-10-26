@@ -1,4 +1,4 @@
-//! Opening a pack (spec/pack-v0.md §1, §2).
+//! Opening a pack (spec/pack-v1.md §2).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -18,7 +18,7 @@ use crate::{APPLICATION_ID, FORMAT_VERSION};
 pub struct Pack {
     db: Mutex<Connection>,
     meta: Meta,
-    /// Prepared once: every entry body is compressed with it (spec/pack-v0.md §2.3).
+    /// Prepared once: every entry body is compressed with it (spec/pack-v1.md §2.3).
     pub(crate) dictionary: Option<DecoderDictionary<'static>>,
     pub(crate) sources: Sources,
     /// Spelling-correction index, built on first use.
@@ -124,6 +124,7 @@ mod tests {
     use super::*;
     use crate::error::MetaProblem;
     use crate::test_pack::{META, TestPack};
+    use crate::text::Scheme;
 
     fn with_meta(extra: (&str, &str)) -> TestPack {
         let mut meta = META.to_vec();
@@ -137,7 +138,11 @@ mod tests {
         test.file("types.toml", b"[meta]");
         let pack = test.open();
         assert_eq!(pack.meta().id(), "test");
-        assert_eq!(pack.meta().fts_langs(), ["en", "zh-Hans"]);
+        assert_eq!(pack.meta().target_langs(), ["zh-Hans"]);
+        assert_eq!(pack.meta().themes(), ["default"]);
+        assert_eq!(pack.meta().default_theme(), "default");
+        assert_eq!(pack.meta().norm(), Scheme::Fold);
+        assert_eq!(pack.meta().unicode_version(), "14.0.0");
         assert_eq!(pack.meta().zstd_dict(), None);
         assert!(pack.dictionary.is_none());
         assert_eq!(pack.file_names().unwrap(), ["types.toml"]);
@@ -194,10 +199,10 @@ mod tests {
 
     #[test]
     fn rejects_other_format_versions() {
-        let test = TestPack::with(APPLICATION_ID, 1, &META);
+        let test = TestPack::with(APPLICATION_ID, 0, &META);
         assert!(matches!(
             Pack::open(test.path()),
-            Err(Error::UnsupportedVersion(1))
+            Err(Error::UnsupportedVersion(0))
         ));
     }
 
@@ -215,10 +220,14 @@ mod tests {
         let cases = [
             ("title", None),
             ("format", Some("zdict-theme")),
-            ("format_version", Some("1")),
+            ("format_version", Some("0")),
             ("compression", Some("gzip")),
-            ("fts_langs", Some("en")),
-            ("fts_langs", Some("[]")),
+            ("target_langs", None),
+            ("target_langs", Some("zh-Hans")),
+            ("themes", Some("[]")),
+            ("themes", Some("[1]")),
+            ("norm", Some("fold")),
+            ("unicode_version", None),
         ];
         for (key, value) in cases {
             let mut meta: Vec<_> = META.iter().copied().filter(|(k, _)| *k != key).collect();
