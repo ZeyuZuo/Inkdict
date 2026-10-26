@@ -3,26 +3,30 @@
 mod common;
 
 use common::load;
-use zdict_core::text::norm;
+use zdict_core::text::{Scheme, norm};
 
+/// fold-1 and exact-1 keys of every Oxford form and the edge cases.
 #[test]
 fn norm_matches_reference() {
     let Some((_, golden)) = load("norm.json") else {
         return;
     };
     let cases = golden.as_array().unwrap();
-    let wrong: Vec<_> = cases
-        .iter()
-        .filter_map(|case| {
-            let (text, key) = (case[0].as_str().unwrap(), case[1].as_str().unwrap());
-            (norm(text) != key).then(|| format!("{text:?}: {:?} != {key:?}", norm(text)))
-        })
-        .collect();
+    let mut wrong = Vec::new();
+    for case in cases {
+        let text = case[0].as_str().unwrap();
+        for (scheme, wanted) in [(Scheme::Fold, &case[1]), (Scheme::Exact, &case[2])] {
+            let key = norm(text, scheme);
+            if key != wanted.as_str().unwrap() {
+                wrong.push(format!("{} {text:?}: {key:?} != {wanted}", scheme.name()));
+            }
+        }
+    }
     assert!(
         wrong.is_empty(),
         "{} of {}: {:?}",
         wrong.len(),
-        cases.len(),
+        cases.len() * 2,
         &wrong[..wrong.len().min(20)]
     );
 }

@@ -201,7 +201,7 @@ impl Pack {
     /// closest first, then by rank. The allowed distance grows with the input length
     /// ([`max_distance`]); exact matches come first with distance 0.
     pub fn correct(&self, text: &str, limit: usize) -> Result<Vec<Correction>> {
-        let key = norm(text);
+        let key = norm(text, self.meta().norm());
         let allowed = max_distance(key.chars().count());
         if key.is_empty() || limit == 0 {
             return Ok(Vec::new());
@@ -281,8 +281,14 @@ mod tests {
         for (id, (word, rank)) in words.iter().enumerate() {
             let id = id as i64 + 1;
             let json = format!(r#"{{"type":"entry","id":"k{id}","lang":"en"}}"#);
-            test.entry(id, word, None, &json)
-                .lookup(&norm(word), *rank, id, 0, word, "headword");
+            test.entry(id, word, None, &json).lookup(
+                &norm(word, crate::text::Scheme::Fold),
+                *rank,
+                id,
+                0,
+                word,
+                "headword",
+            );
         }
         test.open()
     }

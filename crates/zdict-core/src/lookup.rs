@@ -31,7 +31,7 @@ impl Pack {
     /// Forms starting with the input: exact matches first, then shorter
     /// forms, then by rank. One result per (entry, anchor).
     pub fn suggest(&self, text: &str, limit: usize) -> Result<Vec<Suggestion>> {
-        let key = norm(text);
+        let key = norm(text, self.meta().norm());
         if key.is_empty() || limit == 0 {
             return Ok(Vec::new());
         }
