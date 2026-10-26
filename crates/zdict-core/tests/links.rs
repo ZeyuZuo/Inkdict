@@ -16,6 +16,11 @@ fn resource_urls_match_reference() {
         let reference = case[0].as_str().unwrap();
         let urls = serde_json::to_value(pack.resource_urls(reference)).unwrap();
         assert_eq!(urls, case[1], "{reference}");
+        assert_eq!(
+            pack.resource(reference).unwrap().is_some(),
+            case[2].as_bool().unwrap(),
+            "stored {reference}"
+        );
     }
     assert!(cases.len() > 2000);
 }

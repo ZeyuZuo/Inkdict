@@ -1,6 +1,6 @@
-//! Render tree: entry content with the theme cascade applied (spec/v0.md §4).
+//! Render tree: entry content with the theme cascade applied (spec/v1.md §4).
 //!
-//! Renderers (Compose, HTML) only draw it: every rule of §4.3 is decided
+//! Renderers (Compose, HTML) only draw it: the rules of §4.2–4.4 are decided
 //! here. Behaviour follows OxDic's reference renderer `oxdic/preview.py`;
 //! the oxdata tests check that its HTML is reproduced byte for byte.
 
@@ -13,7 +13,7 @@ use crate::link::Link;
 use crate::node::{Attr, Child, Entry, Node};
 use crate::pack::Pack;
 use crate::registry::{Kind, Registry, Role};
-use crate::theme::{Frame, Pseudo, Style, ThemeStack, Value, python_str};
+use crate::theme::{Frame, Pseudo, Selector, Style, ThemeStack, Value, python_str};
 
 /// A node as it is drawn.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -84,6 +84,17 @@ impl RenderNode {
 pub enum RenderChild {
     Text(String),
     Node(Box<RenderNode>),
+    Tabs(Vec<Tab>),
+}
+
+/// One panel in a group of adjacent tab siblings.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Tab {
+    /// Descendant drawn in the bar and omitted from the panel; otherwise a number.
+    pub label: Option<RenderNode>,
+    /// The theme's `tab_accent` color token.
+    pub accent: Option<String>,
+    pub panel: RenderNode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -144,12 +155,19 @@ pub struct Collapse {
     pub summary: Option<Box<RenderChild>>,
 }
 
-/// Inherited text properties (spec v0 §4.2); `size` is relative to the root.
+/// A font token and the language key selected from its family stacks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Font {
+    pub token: String,
+    pub key: String,
+}
+
+/// Inherited text properties (spec v1 §4.2); `size` is relative to the root.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TextStyle {
     pub size: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub font: Option<String>,
+    pub font: Option<Font>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weight: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -184,14 +202,19 @@ impl Default for TextStyle {
 
 impl TextStyle {
     /// This style with a node's own text properties applied.
-    fn inherit(&self, own: &Style) -> TextStyle {
+    fn inherit(&self, own: &Style, themes: &ThemeStack, lang: Option<&str>) -> TextStyle {
         let mut next = self.clone();
         for (name, value) in own.iter() {
             let text = || value.as_str().map(String::from);
             match name {
                 "size" => next.size *= value.as_f64().unwrap_or(1.0),
                 "line_height" => next.line_height = value.as_f64(),
-                "font" => next.font = text(),
+                "font" => {
+                    next.font = text().map(|token| Font {
+                        key: String::new(),
+                        token,
+                    })
+                }
                 "weight" => next.weight = text(),
                 "style" => next.style = text(),
                 "case" => next.case = text(),
@@ -200,6 +223,9 @@ impl TextStyle {
                 "baseline" => next.baseline = text(),
                 _ => {}
             }
+        }
+        if let Some(font) = &mut next.font {
+            font.key = themes.font_key(&font.token, lang).to_owned();
         }
         next
     }
@@ -212,13 +238,10 @@ pub struct Renderer<'a> {
     themes: &'a ThemeStack,
 }
 
-/// Per-entry state: boxes shown at their `box_ref`, anchor numbers.
+/// Per-entry anchor numbers and labels already moved into a tab bar.
 struct Context<'e> {
-    boxes: HashMap<&'e str, &'e Node>,
-    referenced: HashSet<&'e str>,
     anchors: HashMap<&'e str, u32>,
-    /// Boxes being expanded, so a box that references itself stops.
-    expanding: RefCell<Vec<&'e str>>,
+    hidden_labels: RefCell<HashSet<*const Node>>,
 }
 
 type Path<'e> = Vec<(Frame<'e>, TextStyle)>;
@@ -234,13 +257,6 @@ impl<'a> Renderer<'a> {
 
     pub fn render(&self, entry: &Entry) -> RenderNode {
         let root = &entry.root;
-        let boxes = root
-            .child_nodes()
-            .filter(|node| node.kind == "box")
-            .filter_map(|node| Some((node.id.as_deref()?, node)))
-            .collect();
-        let mut referenced = HashSet::new();
-        collect_box_refs(root, &mut referenced);
         let anchors = entry
             .anchors()
             .into_iter()
@@ -248,13 +264,10 @@ impl<'a> Renderer<'a> {
             .filter_map(|(number, node)| Some((node.id.as_deref()?, number as u32)))
             .collect();
         let context = Context {
-            boxes,
-            referenced,
             anchors,
-            expanding: RefCell::new(Vec::new()),
+            hidden_labels: RefCell::new(HashSet::new()),
         };
-        self.node(&context, root, &Vec::new(), None)
-            .expect("the root is never hidden and never a box_ref")
+        self.node(&context, root, &Vec::new())
     }
 
     fn frame<'e>(&self, node: &'e Node, path: &Path<'e>) -> Frame<'e> {
@@ -271,31 +284,7 @@ impl<'a> Renderer<'a> {
         self.themes.own_style(&frames, pseudo)
     }
 
-    /// None for a `box_ref` whose box is not in the entry.
-    fn node<'e>(
-        &self,
-        cx: &Context<'e>,
-        node: &'e Node,
-        path: &Path<'e>,
-        collapse: Option<String>,
-    ) -> Option<RenderNode> {
-        // A box_ref shows its box in place (spec v0 §4.3), unless the
-        // registry does not know box_ref: then it is an unknown type.
-        if node.kind == "box_ref" && self.registry.contains("box_ref") {
-            let target = node.attr("box").and_then(Attr::as_str)?;
-            let mut ref_path = path.clone();
-            ref_path.push((self.frame(node, path), TextStyle::default()));
-            let ref_style = self.style(&ref_path, None);
-            if ref_style.str("display") == Some("none") || cx.expanding.borrow().contains(&target) {
-                return None;
-            }
-            let collapse = ref_style.str("collapse").map(String::from);
-            cx.expanding.borrow_mut().push(target);
-            let shown = self.node(cx, cx.boxes.get(target)?, path, collapse);
-            cx.expanding.borrow_mut().pop();
-            return shown;
-        }
-        let is_root = path.is_empty();
+    fn node<'e>(&self, cx: &Context<'e>, node: &'e Node, path: &Path<'e>) -> RenderNode {
         let parent_text = path
             .last()
             .map(|(_, text)| text.clone())
@@ -303,10 +292,8 @@ impl<'a> Renderer<'a> {
         let mut path = path.clone();
         path.push((self.frame(node, &path), TextStyle::default()));
         let style = self.style(&path, None);
-        if !is_root && style.str("display") == Some("none") {
-            return None;
-        }
-        let text = parent_text.inherit(&style);
+        let lang = path.last().and_then(|(frame, _)| frame.lang);
+        let text = parent_text.inherit(&style, self.themes, lang);
         path.last_mut().expect("just pushed").1 = text.clone();
         let block = match style.str("display") {
             Some(display) => display == "block",
@@ -325,27 +312,6 @@ impl<'a> Renderer<'a> {
                 number,
             });
         }
-        let collapse = collapse.or_else(|| style.str("collapse").map(String::from));
-        if let Some(state) = collapse.filter(|state| state != "none") {
-            // The first child, string or node, stays visible (spec v0 §4.2).
-            let summary = match (&node.text, node.children.first()) {
-                (Some(text), _) | (None, Some(Child::Text(text))) => {
-                    Some(RenderChild::Text(text.clone()))
-                }
-                (None, Some(Child::Node(first))) => self
-                    .node(cx, first, &path, None)
-                    .map(|first| RenderChild::Node(Box::new(first))),
-                (None, None) => None,
-            };
-            let rest = node.children.get(1..).unwrap_or_default();
-            rendered.children = self.children(cx, rest, &path);
-            rendered.collapse = Some(Collapse {
-                open: state == "open",
-                summary: summary.map(Box::new),
-            });
-            rendered.style = style;
-            return Some(rendered);
-        }
         if !style.flag("hide_text") {
             rendered.children = match &node.text {
                 Some(own) => vec![RenderChild::Text(own.clone())],
@@ -353,14 +319,15 @@ impl<'a> Renderer<'a> {
             };
         }
         let attrs = &node.attrs;
-        let audio_ref = match node.kind.as_str() {
-            "audio" => attrs.get("res").or_else(|| attrs.get("audio")),
-            _ if has(Role::Audio) => attrs
-                .get("audio")
-                .and_then(|audio| attrs.get("res").or(Some(audio))),
-            _ => None,
-        };
-        if let Some(reference) = audio_ref.and_then(Attr::as_str) {
+        let resource = self
+            .registry
+            .res_attrs(&node.kind)
+            .iter()
+            .find_map(|name| attrs.get(name))
+            .and_then(Attr::as_str)
+            .filter(|value| !value.is_empty());
+        let audio_ref = if has(Role::Audio) { resource } else { None };
+        if let Some(reference) = audio_ref {
             let name = style.str("icon").unwrap_or("speaker").to_owned();
             rendered.audio = Some(Audio {
                 urls: self.pack.resource_urls(reference),
@@ -368,13 +335,11 @@ impl<'a> Renderer<'a> {
                 region: attrs.get("region").map(python_str),
             });
         }
-        if has(Role::Image) {
-            let urls = attrs
-                .get("res")
-                .and_then(Attr::as_str)
-                .map(|r| self.pack.resource_urls(r));
+        if has(Role::Image)
+            && let Some(reference) = resource
+        {
             rendered.image = Some(Image {
-                urls: urls.unwrap_or_default(),
+                urls: self.pack.resource_urls(reference),
             });
         }
         if has(Role::Link) {
@@ -398,13 +363,25 @@ impl<'a> Renderer<'a> {
                     .filter(|n| *n != "none")
                     .map(String::from),
                 width: style.get("indent").cloned().unwrap_or(Value::Float(1.2)),
-                text_style: text.inherit(&marker_style),
+                text_style: text.inherit(&marker_style, self.themes, lang),
                 style: marker_style,
             });
         }
         rendered.title = self.generated(&path, &text, Pseudo::Title, style.str("title"), attrs);
+        if let Some(state) = style.str("collapse").filter(|state| *state != "none") {
+            let summary = node
+                .child_nodes()
+                .next()
+                .map(|first| RenderChild::Node(Box::new(self.node(cx, first, &path))));
+            rendered.children =
+                self.children(cx, node.children.get(1..).unwrap_or_default(), &path);
+            rendered.collapse = Some(Collapse {
+                open: state == "open",
+                summary: summary.map(Box::new),
+            });
+        }
         rendered.style = style;
-        Some(rendered)
+        rendered
     }
 
     fn children<'e>(
@@ -415,50 +392,138 @@ impl<'a> Renderer<'a> {
     ) -> Vec<RenderChild> {
         let mut rendered = Vec::new();
         let mut previous: Option<&str> = None;
+        let mut tabs = Vec::new();
         for child in children {
             let node = match child {
                 Child::Text(text) => {
+                    if !tabs.is_empty() && text.trim().is_empty() {
+                        continue;
+                    }
+                    self.tab_group(cx, &mut tabs, path, &mut rendered);
                     rendered.push(RenderChild::Text(text.clone()));
                     previous = None;
                     continue;
                 }
                 Child::Node(node) => node,
             };
-            if node.kind == "box"
-                && node
-                    .id
-                    .as_deref()
-                    .is_some_and(|id| cx.referenced.contains(id))
+            if cx
+                .hidden_labels
+                .borrow()
+                .contains(&std::ptr::from_ref(node))
             {
                 continue;
             }
-            // Hidden nodes and boxes that cannot be shown leave no trace:
-            // no join, and the sibling before them stays the previous one.
-            let Some(shown) = self.node(cx, node, path, None) else {
+            let mut child_path = path.clone();
+            child_path.push((self.frame(node, path), TextStyle::default()));
+            let style = self.style(&child_path, None);
+            if style.str("display") == Some("none") {
                 continue;
-            };
-            if previous == Some(node.kind.as_str()) {
-                let mut child_path = path.clone();
-                child_path.push((self.frame(node, path), TextStyle::default()));
-                if let Some(join) = self
-                    .style(&child_path, None)
-                    .str("join")
-                    .filter(|join| !join.is_empty())
-                {
-                    rendered.push(RenderChild::Text(join.to_owned()));
-                }
             }
-            rendered.push(RenderChild::Node(Box::new(shown)));
+            if style.flag("tabs") {
+                tabs.push((node, style));
+                previous = Some(&node.kind);
+                continue;
+            }
+            self.tab_group(cx, &mut tabs, path, &mut rendered);
+            if previous == Some(node.kind.as_str())
+                && let Some(join) = style.str("join").filter(|join| !join.is_empty())
+            {
+                rendered.push(RenderChild::Text(join.to_owned()));
+            }
+            rendered.push(RenderChild::Node(Box::new(self.node(cx, node, path))));
             previous = Some(&node.kind);
         }
+        self.tab_group(cx, &mut tabs, path, &mut rendered);
         rendered
+    }
+
+    fn tab_group<'e>(
+        &self,
+        cx: &Context<'e>,
+        tabs: &mut Vec<(&'e Node, Style)>,
+        path: &Path<'e>,
+        rendered: &mut Vec<RenderChild>,
+    ) {
+        if tabs.len() < 2 {
+            for (node, _) in tabs.drain(..) {
+                rendered.push(RenderChild::Node(Box::new(self.node(cx, node, path))));
+            }
+            return;
+        }
+        let mut group = Vec::new();
+        for (node, style) in tabs.drain(..) {
+            // A label lives in the bar: it inherits the group's text style,
+            // while selector matching retains its original ancestor frames.
+            let inherited = path
+                .last()
+                .map(|(_, text)| text.clone())
+                .unwrap_or_default();
+            let mut child_path = path.clone();
+            child_path.push((self.frame(node, path), inherited));
+            let label = style
+                .str("tab_label")
+                .and_then(|text| Selector::parse(text).ok())
+                .and_then(|selector| self.tab_label(node, &child_path, &selector));
+            let label = label.map(|(label, parent)| {
+                let shown = self.node(cx, label, &parent);
+                cx.hidden_labels
+                    .borrow_mut()
+                    .insert(std::ptr::from_ref(label));
+                shown
+            });
+            group.push(Tab {
+                label,
+                accent: style.str("tab_accent").map(String::from),
+                panel: self.node(cx, node, path),
+            });
+        }
+        rendered.push(RenderChild::Tabs(group));
+    }
+
+    fn tab_label<'e>(
+        &self,
+        node: &'e Node,
+        path: &Path<'e>,
+        selector: &Selector,
+    ) -> Option<(&'e Node, Path<'e>)> {
+        let inherited = path
+            .last()
+            .map(|(_, text)| text.clone())
+            .unwrap_or_default();
+        let mut stack: Vec<_> = node
+            .child_nodes()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .map(|child| (child, path.clone()))
+            .collect();
+        while let Some((item, parent)) = stack.pop() {
+            let mut item_path = parent.clone();
+            item_path.push((self.frame(item, &parent), inherited.clone()));
+            let frames: Vec<_> = item_path.iter().map(|(frame, _)| *frame).collect();
+            if selector.matches(&frames) {
+                return Some((item, parent));
+            }
+            stack.extend(
+                item.child_nodes()
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .map(|child| (child, item_path.clone())),
+            );
+        }
+        None
     }
 
     fn icon(&self, path: &Path, text: &TextStyle, name: String) -> Icon {
         let style = self.style(path, Some(Pseudo::Icon));
         Icon {
             name,
-            text_style: text.inherit(&style),
+            text_style: text.inherit(
+                &style,
+                self.themes,
+                path.last().and_then(|(frame, _)| frame.lang),
+            ),
             style,
         }
     }
@@ -478,7 +543,11 @@ impl<'a> Renderer<'a> {
         let style = self.style(path, Some(pseudo));
         Some(Generated {
             text: filled,
-            text_style: text.inherit(&style),
+            text_style: text.inherit(
+                &style,
+                self.themes,
+                path.last().and_then(|(frame, _)| frame.lang),
+            ),
             style,
         })
     }
@@ -488,17 +557,6 @@ impl Pack {
     /// Render an entry with the pack's registry and a theme stack.
     pub fn renderer<'a>(&'a self, registry: &'a Registry, themes: &'a ThemeStack) -> Renderer<'a> {
         Renderer::new(self, registry, themes)
-    }
-}
-
-fn collect_box_refs<'e>(node: &'e Node, found: &mut HashSet<&'e str>) {
-    if node.kind == "box_ref"
-        && let Some(target) = node.attr("box").and_then(Attr::as_str)
-    {
-        found.insert(target);
-    }
-    for child in node.child_nodes() {
-        collect_box_refs(child, found);
     }
 }
 
@@ -533,201 +591,255 @@ pub fn interpolate(template: &str, attrs: &std::collections::BTreeMap<String, At
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::test_pack::TestPack;
     use crate::theme::Theme;
 
     const TYPES: &str = r##"
+[meta]
+format = "zdict-types"
+version = 1
 [types.entry]
 kind = "block"
-children = ["sense", "box", "box_ref"]
 roles = ["anchor"]
-[types.sense]
+[types.panel]
 kind = "block"
-attrs = { n = "int?" }
-children = ["#text", "definition", "xword"]
 roles = ["anchor"]
-[types.definition]
+attrs = { plain = "bool?" }
+[types.head]
 kind = "block"
-children = ["#text"]
-[types.xword]
+[types.label]
 kind = "inline"
-children = ["#text"]
-roles = ["link"]
-[types.box]
+[types.body]
 kind = "block"
-children = ["definition"]
-roles = ["anchor"]
-[types.box_ref]
+[types.sound]
+kind = "inline"
+roles = ["audio"]
+attrs = { z_sound = "res?", a_fallback = "res?", audio = "string?" }
+[types.picture]
 kind = "block"
-attrs = { box = "ref" }
+roles = ["image"]
+attrs = { source = "res?" }
 "##;
-    const THEME: &str = r#"
-[meta]
-format = "zdict-theme"
-[style.entry]
-size = 1.25
-[style.sense]
-marker = "{n}."
-indent = 2
-[style."sense > definition"]
-size = 0.8
-weight = "bold"
-[style.definition]
-join = " | "
-[style.box]
-collapse = "closed"
-[style.box_ref]
-collapse = "open"
-"#;
-    const ENTRY: &str = r#"{"type":"entry","id":"e","lang":"en","children":[{"type":"sense","id":"s1","attrs":{"n":1},"children":[{"type":"definition","text":"fruit"},{"type":"definition","lang":"zh-Hans","text":"水果"},{"type":"xword","text":"pear"}]},{"type":"box_ref","attrs":{"box":"b"}},{"type":"box","id":"b","children":[{"type":"definition","text":"title"},{"type":"definition","text":"body"}]}]}"#;
 
-    fn render(overlay: Option<&str>) -> RenderNode {
+    fn render(theme: &str, children: &str) -> RenderNode {
         let test = TestPack::new();
-        test.file("types.toml", TYPES.as_bytes())
-            .file("themes/default.toml", THEME.as_bytes())
-            .entry(1, "apple", None, ENTRY);
+        test.sql("INSERT INTO resource_sources VALUES ('a', 1, 'https://audio/{key}'), ('i', 1, 'https://image/{key}')");
+        let root = serde_json::from_str(&format!(
+            r#"{{"type":"entry","id":"e","lang":"en","children":[{children}]}}"#
+        ))
+        .unwrap();
+        let entry = Entry {
+            id: 1,
+            key: "e".into(),
+            headword: "e".into(),
+            homograph: None,
+            root,
+        };
         let pack = test.open();
-        let registry = pack.registry().unwrap();
-        let mut stack = ThemeStack::new(pack.theme("default").unwrap());
-        if let Some(style) = overlay {
-            stack.push(
-                Theme::parse(
-                    "overlay",
-                    &format!("[meta]\nformat = \"zdict-theme\"\n{style}"),
-                )
-                .unwrap(),
-            );
-        }
-        let entry = pack.entry("e").unwrap();
-        pack.renderer(&registry, &stack).render(&entry)
+        let registry = Registry::parse(TYPES).unwrap();
+        let themes = ThemeStack::new(
+            Theme::parse(
+                "t",
+                &format!("[meta]\nformat = \"zdict-theme\"\nversion = 1\n{theme}"),
+            )
+            .unwrap(),
+        );
+        pack.renderer(&registry, &themes).render(&entry)
     }
 
     fn node(child: &RenderChild) -> &RenderNode {
         match child {
             RenderChild::Node(node) => node,
-            RenderChild::Text(text) => panic!("text {text:?}"),
+            other => panic!("expected node: {other:?}"),
         }
     }
 
+    const TABS: &str = r#"
+[style.panel]
+tabs = true
+tab_label = "head > label"
+tab_accent = "accent"
+[style."panel > head > label"]
+weight = "bold"
+"#;
+    const TWO: &str = r#"{"type":"panel","id":"p1","children":[{"type":"head","children":[{"type":"label","text":"Noun"}]},{"type":"body","text":"one"}]}," ",{"type":"panel","id":"p2","children":[{"type":"head","children":[{"type":"label","text":"Verb"}]},{"type":"body","text":"two"}]}"#;
+
     #[test]
-    fn inherits_text_and_generates_markers_joins_links_and_boxes() {
-        let root = render(None);
+    fn groups_tabs_and_moves_the_first_matching_labels_out_of_panels() {
+        let root = render(TABS, TWO);
+        let [RenderChild::Tabs(tabs)] = root.children.as_slice() else {
+            panic!("{root:?}")
+        };
+        assert_eq!(tabs.len(), 2);
+        for (tab, label) in tabs.iter().zip(["Noun", "Verb"]) {
+            let shown = tab.label.as_ref().unwrap();
+            assert_eq!(shown.children, [RenderChild::Text(label.into())]);
+            assert_eq!(shown.text.weight.as_deref(), Some("bold"));
+            assert_eq!(tab.accent.as_deref(), Some("accent"));
+            assert!(node(&tab.panel.children[0]).children.is_empty());
+        }
+        assert_eq!(tabs[1].panel.anchor.as_ref().unwrap().number, 2);
+        let json = serde_json::to_value(&root).unwrap();
+        assert_eq!(json["children"][0][1]["label"]["type"], "label");
+    }
+
+    #[test]
+    fn a_single_tab_retains_its_label_and_text_breaks_a_group() {
+        let one = r#"{"type":"panel","children":[{"type":"head","children":[{"type":"label","text":"Noun"}]}]}"#;
+        let root = render(TABS, one);
         assert_eq!(
-            root.anchor,
-            Some(Anchor {
-                id: "e".into(),
-                number: 0
+            node(&node(&node(&root.children[0]).children[0]).children[0]).kind,
+            "label"
+        );
+        let root = render(TABS, &format!("{one},\"separate\",{one}"));
+        assert_eq!(root.children.len(), 3);
+        assert!(matches!(root.children[0], RenderChild::Node(_)));
+        assert!(matches!(root.children[2], RenderChild::Node(_)));
+    }
+
+    #[test]
+    fn missing_labels_use_numbers_and_hidden_siblings_do_not_break_tabs() {
+        let root = render(
+            &format!("{TABS}\n[style.body]\ndisplay = \"none\""),
+            r#"{"type":"panel"},"\n\t",{"type":"body"},{"type":"panel"}"#,
+        );
+        let [RenderChild::Tabs(tabs)] = root.children.as_slice() else {
+            panic!("{root:?}")
+        };
+        assert!(tabs.iter().all(|tab| tab.label.is_none()));
+    }
+
+    #[test]
+    fn joins_after_tabs_follow_the_last_sibling_type() {
+        let theme = format!("{TABS}\n[style.\"panel[plain]\"]\ntabs = false\njoin = \" / \"");
+        let root = render(
+            &theme,
+            r#"{"type":"panel"},{"type":"panel"},{"type":"panel","attrs":{"plain":true}}"#,
+        );
+        assert!(matches!(root.children[0], RenderChild::Tabs(_)));
+        assert_eq!(root.children[1], RenderChild::Text(" / ".into()));
+        assert!(matches!(root.children[2], RenderChild::Node(_)));
+        let root = render(
+            &format!("{TABS}\n[style.\"panel[plain]\"]\ntabs = false"),
+            r#"{"type":"panel","attrs":{"plain":true}},{"type":"panel","attrs":{"plain":true}}"#,
+        );
+        assert!(
+            root.children
+                .iter()
+                .all(|child| matches!(child, RenderChild::Node(_)))
+        );
+    }
+
+    #[test]
+    fn inherited_fonts_and_generated_parts_resolve_language_keys() {
+        let theme = r#"
+[fonts.text]
+default = ["Default"]
+zh = ["Primary"]
+"zh-Hans" = ["Exact"]
+[fonts.ui]
+default = ["UI"]
+zh = ["Chinese UI"]
+[style.entry]
+font = "text"
+size = 1.25
+[style.body]
+before = "("
+after = ")"
+title = "Title"
+marker = "1."
+icon = "key"
+[style."body::before"]
+font = "ui"
+[style."body::after"]
+font = "ui"
+[style."body::title"]
+font = "ui"
+[style."body::marker"]
+font = "ui"
+[style."body::icon"]
+font = "ui"
+"#;
+        let root = render(
+            theme,
+            r#"{"type":"body","lang":"zh-Hans","children":[{"type":"mystery","text":"文本"}]},{"type":"body","lang":"zh-Hant","text":"字"}"#,
+        );
+        let body = node(&root.children[0]);
+        assert_eq!(
+            body.text.font,
+            Some(Font {
+                token: "text".into(),
+                key: "zh-Hans".into()
             })
         );
-        let sense = node(&root.children[0]);
-        let marker = sense.marker.as_ref().unwrap();
+        assert_eq!(node(&body.children[0]).text.font, body.text.font);
+        assert!(!node(&body.children[0]).block);
+        assert_eq!(body.text.size, 1.25);
+        let generated = [
+            &body.before.as_ref().unwrap().text_style,
+            &body.after.as_ref().unwrap().text_style,
+            &body.title.as_ref().unwrap().text_style,
+            &body.marker.as_ref().unwrap().text_style,
+            &body.icon.as_ref().unwrap().text_style,
+        ];
+        for text in generated {
+            assert_eq!(
+                text.font,
+                Some(Font {
+                    token: "ui".into(),
+                    key: "zh".into()
+                })
+            );
+        }
         assert_eq!(
-            (marker.text.as_str(), marker.width.to_string()),
-            ("1.", "2".into())
+            node(&root.children[1]).text.font.as_ref().unwrap().key,
+            "zh"
         );
-        let definition = node(&sense.children[0]);
-        assert_eq!(definition.text.size, 1.25 * 0.8);
-        assert_eq!(definition.text.weight.as_deref(), Some("bold"));
-        assert_eq!(sense.children[1], RenderChild::Text(" | ".into()));
-        let xword = node(&sense.children[3]);
-        assert_eq!(xword.link.as_ref().unwrap().text, "pear");
-        // The box shows at its box_ref, open there, and not again at the end.
-        assert_eq!(root.children.len(), 2);
-        let shown = node(&root.children[1]);
-        assert_eq!(shown.kind, "box");
-        let collapse = shown.collapse.as_ref().unwrap();
+        assert_eq!(root.text.font.as_ref().unwrap().key, "default");
+    }
+
+    #[test]
+    fn media_use_the_first_present_declared_resource_attribute() {
+        let root = render(
+            "",
+            r#"{"type":"sound","attrs":{"audio":"wrong","z_sound":"a:first","a_fallback":"a:second"}},{"type":"sound","attrs":{"a_fallback":"a:second"}},{"type":"sound","attrs":{"audio":"wrong"}},{"type":"picture","attrs":{"source":"i:picture"}},{"type":"picture"},{"type":"audio","attrs":{"res":"a:unknown"},"text":"unknown"}"#,
+        );
+        assert_eq!(
+            node(&root.children[0]).audio.as_ref().unwrap().urls,
+            ["https://audio/first"]
+        );
+        assert_eq!(
+            node(&root.children[1]).audio.as_ref().unwrap().urls,
+            ["https://audio/second"]
+        );
+        assert!(node(&root.children[2]).audio.is_none());
+        assert_eq!(
+            node(&root.children[3]).image.as_ref().unwrap().urls,
+            ["https://image/picture"]
+        );
+        assert!(node(&root.children[4]).image.is_none());
+        assert!(node(&root.children[5]).audio.is_none());
+        assert_eq!(
+            node(&root.children[5]).children,
+            [RenderChild::Text("unknown".into())]
+        );
+    }
+
+    #[test]
+    fn collapses_the_first_node_and_preserves_the_remaining_children() {
+        let root = render(
+            "[style.panel]\ncollapse = \"open\"",
+            r#"{"type":"panel","children":[{"type":"label","text":"summary"},{"type":"body","text":"rest"}]}"#,
+        );
+        let panel = node(&root.children[0]);
+        let collapse = panel.collapse.as_ref().unwrap();
         assert!(collapse.open);
-        match collapse.summary.as_deref() {
-            Some(RenderChild::Node(summary)) => {
-                assert_eq!(summary.children, [RenderChild::Text("title".into())])
-            }
-            other => panic!("summary {other:?}"),
-        }
-        assert_eq!(shown.children.len(), 1);
-    }
-
-    #[test]
-    fn overlays_hide_and_restyle_over_the_base_theme() {
-        let root = render(Some(
-            "[style.\"*[lang=zh]\"]\ndisplay = \"none\"\n[style.definition]\nsize = 2\n",
-        ));
-        let sense = node(&root.children[0]);
-        let kinds: Vec<_> = sense
-            .children
-            .iter()
-            .map(|c| node(c).kind.as_str())
-            .collect();
         assert_eq!(
-            kinds,
-            ["definition", "xword"],
-            "Chinese definition and its join are gone"
+            node(collapse.summary.as_deref().unwrap()).children,
+            [RenderChild::Text("summary".into())]
         );
-        assert_eq!(node(&sense.children[0]).text.size, 1.25 * 2.0);
-    }
-
-    /// Hostile or unusual content the reference renderer never meets.
-    fn render_entry(theme: &str, entry: &str) -> RenderNode {
-        let test = TestPack::new();
-        test.file("types.toml", TYPES.as_bytes())
-            .file(
-                "themes/default.toml",
-                format!("[meta]\nformat = \"zdict-theme\"\n{theme}").as_bytes(),
-            )
-            .entry(1, "x", None, entry);
-        let pack = test.open();
-        let registry = pack.registry().unwrap();
-        let stack = ThemeStack::new(pack.theme("default").unwrap());
-        pack.renderer(&registry, &stack)
-            .render(&pack.entry("e").unwrap())
-    }
-
-    #[test]
-    fn stops_at_boxes_that_reference_themselves() {
-        let entry = r#"{"type":"entry","id":"e","children":[{"type":"box_ref","attrs":{"box":"b"}},{"type":"box","id":"b","children":[{"type":"definition","text":"in"},{"type":"box_ref","attrs":{"box":"b"}}]}]}"#;
-        let root = render_entry("", entry);
-        let shown = node(&root.children[0]);
-        assert_eq!((shown.kind.as_str(), shown.children.len()), ("box", 1));
-    }
-
-    #[test]
-    fn hidden_nodes_leave_no_summary_box_or_join() {
-        let theme = "[style.definition]\njoin = \" / \"\n[style.box]\ncollapse = \"closed\"\n\
-                     [style.\"*[lang=zh]\"]\ndisplay = \"none\"\n[style.\"box_ref[box=gone]\"]\ndisplay = \"inline\"\n";
-        let entry = r#"{"type":"entry","id":"e","children":[{"type":"box_ref","attrs":{"box":"b"}},{"type":"sense","id":"s","children":[{"type":"definition","text":"a"},{"type":"definition","lang":"zh","text":"甲"},{"type":"definition","text":"b"}]},{"type":"box","id":"b","children":[{"type":"definition","lang":"zh","text":"标题"},"tail"]}]}"#;
-        let root = render_entry(theme, entry);
-        let shown = node(&root.children[0]);
-        assert!(shown.collapse.as_ref().unwrap().summary.is_none());
-        assert_eq!(shown.children, [RenderChild::Text("tail".into())]);
-        let sense = node(&root.children[1]);
-        let texts: Vec<_> = sense
-            .children
-            .iter()
-            .map(|c| match c {
-                RenderChild::Text(text) => text.clone(),
-                RenderChild::Node(n) => format!("<{}>", n.kind),
-            })
-            .collect();
-        assert_eq!(texts, ["<definition>", " / ", "<definition>"]);
-    }
-
-    #[test]
-    fn collapses_text_and_string_first_children_without_losing_them() {
-        let theme = "[style.definition]\ncollapse = \"open\"\n";
-        let entry = r#"{"type":"entry","id":"e","children":[{"type":"sense","id":"s","children":[{"type":"definition","text":"kept"}]}]}"#;
-        let definition = node(&node(&render_entry(theme, entry).children[0]).children[0]).clone();
-        let collapse = definition.collapse.unwrap();
-        assert_eq!(
-            collapse.summary.as_deref(),
-            Some(&RenderChild::Text("kept".into()))
-        );
-        assert!(definition.children.is_empty());
-    }
-
-    #[test]
-    fn missing_box_targets_leave_no_join() {
-        let theme = "[style.box_ref]\njoin = \" / \"\n";
-        let entry = r#"{"type":"entry","id":"e","children":[{"type":"box_ref","attrs":{"box":"x"}},{"type":"box_ref","attrs":{"box":"y"}}]}"#;
-        assert!(render_entry(theme, entry).children.is_empty());
+        assert_eq!(node(&panel.children[0]).kind, "body");
     }
 
     #[test]

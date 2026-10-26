@@ -1,4 +1,4 @@
-//! Themes and their cascade (spec/v0.md §4, §7.2).
+//! Themes and their cascade (spec/v1.md §4).
 //!
 //! A port of OxDic's `oxdic/protocol.py` `Theme`: rules apply in order of
 //! (layer, specificity, position in the file), and each property keeps the
@@ -152,12 +152,16 @@ struct Rule {
     order: usize,
 }
 
+/// Language key to candidate font families, in declaration order.
+pub type FontStacks = Vec<(String, Vec<String>)>;
+
 /// One theme file (`zdict-theme`).
 #[derive(Debug, Clone)]
 pub struct Theme {
     pub name: String,
-    /// Font token -> candidate families, in file order.
-    pub fonts: Vec<(String, Vec<String>)>,
+    /// Font token -> language key -> candidate families, in file order.
+    pub fonts: Vec<(String, FontStacks)>,
+    font_errors: Vec<String>,
     /// Scheme (`light`, `dark`) -> color token -> CSS color, in file order.
     pub colors: Vec<(String, Vec<(String, String)>)>,
     rules: Vec<Rule>,
@@ -183,16 +187,42 @@ impl Theme {
         {
             return Err(bad("meta.format is not \"zdict-theme\"".to_owned()));
         }
+        if meta
+            .and_then(|m| m.get("version"))
+            .and_then(toml::Value::as_integer)
+            != Some(1)
+        {
+            return Err(bad("not a zdict-theme v1 theme".to_owned()));
+        }
         let title = meta
             .and_then(|m| m.get("name"))
             .and_then(toml::Value::as_str);
         let mut fonts = Vec::new();
-        for (token, stack) in section(&data, "fonts") {
-            let families = stack
-                .as_array()
-                .and_then(|items| items.iter().map(|v| v.as_str().map(String::from)).collect())
-                .ok_or_else(|| bad(format!("fonts.{token} is not a list of strings")))?;
-            fonts.push((token.clone(), families));
+        let mut font_errors = Vec::new();
+        for (token, stacks) in section(&data, "fonts") {
+            let mut parsed = Vec::new();
+            if let Some(stacks) = stacks
+                .as_table()
+                .filter(|stacks| stacks.contains_key("default"))
+            {
+                for (lang, stack) in stacks {
+                    if lang != "default" && !valid_lang(lang) {
+                        font_errors.push(format!("fonts.{token}: invalid lang {lang:?}"));
+                    }
+                    let families: Option<Vec<String>> = stack.as_array().and_then(|items| {
+                        items.iter().map(|v| v.as_str().map(String::from)).collect()
+                    });
+                    if families.as_ref().is_none_or(Vec::is_empty) {
+                        font_errors.push(format!(
+                            "fonts.{token}.{lang}: must be a list of font names"
+                        ));
+                    }
+                    parsed.push((lang.clone(), families.unwrap_or_default()));
+                }
+            } else {
+                font_errors.push(format!("fonts.{token}: needs a table with a default list"));
+            }
+            fonts.push((token.clone(), parsed));
         }
         let mut colors = Vec::new();
         for (scheme, tokens) in section(&data, "colors") {
@@ -233,10 +263,22 @@ impl Theme {
         Ok(Theme {
             name: title.unwrap_or(name).to_owned(),
             fonts,
+            font_errors,
             colors,
             rules,
             by_subject,
         })
+    }
+
+    /// Exact language tag, then primary subtag, then `default`.
+    pub fn font_key<'a>(&'a self, token: &str, lang: Option<&str>) -> &'a str {
+        font_key(
+            self.fonts
+                .iter()
+                .find(|(name, _)| name == token)
+                .map(|(_, stacks)| stacks.as_slice()),
+            lang,
+        )
     }
 
     fn candidates<'a>(&'a self, kind: &str) -> impl Iterator<Item = &'a Rule> {
@@ -247,7 +289,7 @@ impl Theme {
 }
 
 /// Themes applied together: the pack's default at the bottom, then app and
-/// user layers. A higher layer outranks any rule below it (spec v0 §7.2).
+/// user layers. A higher layer outranks any rule below it (spec v1 §4.3).
 #[derive(Debug, Clone)]
 pub struct ThemeStack {
     layers: Vec<Theme>,
@@ -267,8 +309,17 @@ impl ThemeStack {
     }
 
     /// Font tokens merged by name; an upper layer replaces a lower one's stack.
-    pub fn fonts(&self) -> Vec<(String, Vec<String>)> {
+    pub fn fonts(&self) -> Vec<(String, FontStacks)> {
         merge(self.layers.iter().map(|theme| theme.fonts.as_slice()))
+    }
+
+    /// Resolve a token using the highest layer that defines it.
+    pub fn font_key<'a>(&'a self, token: &str, lang: Option<&str>) -> &'a str {
+        self.layers
+            .iter()
+            .rev()
+            .find(|theme| theme.fonts.iter().any(|(name, _)| name == token))
+            .map_or("default", |theme| theme.font_key(token, lang))
     }
 
     /// Color tokens of one scheme (`light`, `dark`), merged by name.
@@ -302,6 +353,34 @@ impl ThemeStack {
         }
         style
     }
+}
+
+fn font_key<'a>(stacks: Option<&'a [(String, Vec<String>)]>, lang: Option<&str>) -> &'a str {
+    let Some(stacks) = stacks else {
+        return "default";
+    };
+    let lang = lang.unwrap_or_default();
+    let primary = lang.split('-').next().unwrap_or_default();
+    [lang, primary]
+        .into_iter()
+        .find_map(|wanted| {
+            stacks
+                .iter()
+                .find(|(key, _)| key == wanted)
+                .map(|(key, _)| key.as_str())
+        })
+        .unwrap_or("default")
+}
+
+/// The language grammar accepted by protocol.py.
+fn valid_lang(lang: &str) -> bool {
+    let mut parts = lang.split('-');
+    let primary = parts.next().unwrap_or_default();
+    (2..=3).contains(&primary.len())
+        && primary.bytes().all(|b| b.is_ascii_lowercase())
+        && parts.all(|part| {
+            (2..=8).contains(&part.len()) && part.bytes().all(|b| b.is_ascii_alphanumeric())
+        })
 }
 
 fn merge<'a, T: Clone + 'a>(layers: impl Iterator<Item = &'a [(String, T)]>) -> Vec<(String, T)> {
@@ -356,7 +435,7 @@ mod tests {
     fn theme(style: &str) -> Theme {
         Theme::parse(
             "t",
-            &format!("[meta]\nformat = \"zdict-theme\"\nversion = 0\n{style}"),
+            &format!("[meta]\nformat = \"zdict-theme\"\nversion = 1\n{style}"),
         )
         .unwrap()
     }
@@ -405,11 +484,11 @@ mod tests {
     #[test]
     fn upper_layers_outrank_more_specific_rules() {
         let mut stack = ThemeStack::new(theme(
-            "[fonts]\ntext = [\"A\"]\nui = [\"B\"]\n[colors.light]\nfg = \"#000\"\n\
+            "[fonts.text]\ndefault = [\"A\"]\n[fonts.ui]\ndefault = [\"B\"]\n[colors.light]\nfg = \"#000\"\n\
              [style.\"entry > definition[lang=zh]\"]\ndisplay = \"block\"\n",
         ));
         stack.push(theme(
-            "[fonts]\ntext = [\"C\"]\n[style.\"*[lang=zh]\"]\ndisplay = \"none\"\n",
+            "[fonts.text]\ndefault = [\"C\"]\n[style.\"*[lang=zh]\"]\ndisplay = \"none\"\n",
         ));
         let attrs = BTreeMap::new();
         let path = [
@@ -429,14 +508,57 @@ mod tests {
         assert_eq!(
             fonts,
             [
-                ("text".to_owned(), vec!["C".to_owned()]),
-                ("ui".to_owned(), vec!["B".to_owned()])
+                (
+                    "text".to_owned(),
+                    vec![("default".to_owned(), vec!["C".to_owned()])]
+                ),
+                (
+                    "ui".to_owned(),
+                    vec![("default".to_owned(), vec!["B".to_owned()])]
+                )
             ]
         );
         assert_eq!(
             stack.colors("light"),
             [("fg".to_owned(), "#000".to_owned())]
         );
+    }
+
+    #[test]
+    fn font_keys_try_exact_primary_then_default_in_the_highest_layer() {
+        let base = theme(
+            r#"
+[fonts.text]
+default = ["Default"]
+zh = ["Primary"]
+"zh-Hans" = ["Exact"]
+[fonts.ui]
+default = ["UI"]
+"#,
+        );
+        for (lang, key) in [
+            (Some("zh-Hans"), "zh-Hans"),
+            (Some("zh-Hant"), "zh"),
+            (Some("zh-Hans-CN"), "zh"),
+            (Some("en"), "default"),
+            (None, "default"),
+        ] {
+            assert_eq!(base.font_key("text", lang), key);
+        }
+        let mut stack = ThemeStack::new(base);
+        stack.push(theme("[fonts.text]\ndefault = [\"Override\"]"));
+        assert_eq!(stack.font_key("text", Some("zh-Hans")), "default");
+        assert_eq!(stack.font_key("ui", Some("zh")), "default");
+        assert_eq!(stack.fonts()[1].0, "ui");
+    }
+
+    #[test]
+    fn rejects_v0_and_missing_theme_versions() {
+        for version in ["", "version = 0", "version = \"1\""] {
+            assert!(
+                Theme::parse("t", &format!("[meta]\nformat = \"zdict-theme\"\n{version}")).is_err()
+            );
+        }
     }
 
     #[test]

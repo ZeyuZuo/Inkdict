@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use zdict_core::theme::Style;
-use zdict_core::{Generated, Icon, RenderChild, RenderNode};
+use zdict_core::{Generated, Icon, RenderChild, RenderNode, Tab, TextStyle};
 
 /// Which attributes links, audio, images and anchors carry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,15 +40,10 @@ pub(crate) fn css_of(style: &Style, block: bool) -> String {
     for (name, value) in style.iter() {
         // Theme strings are tokens (`fg`, `bold`, `ui`); anything else could
         // break out of the declaration or the attribute, so it is dropped.
-        if value.as_str().is_some_and(|text| {
-            !text
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-        }) {
+        if value.as_str().is_some_and(|text| !is_token(text)) {
             continue;
         }
         let rule = match name {
-            "font" => format!("font-family:var(--font-{value})"),
             "size" => format!("font-size:{value}em"),
             "weight" => format!(
                 "font-weight:{}",
@@ -101,6 +96,36 @@ pub(crate) fn css_of(style: &Style, block: bool) -> String {
         rules.push(rule);
     }
     rules.join(";")
+}
+
+fn is_token(text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// Font declarations precede all other properties, as in preview.py.
+fn styled_css(style: &Style, text: &TextStyle, block: bool, restate: bool) -> String {
+    let css = css_of(style, block);
+    let Some(font) = text
+        .font
+        .as_ref()
+        .filter(|font| restate && is_token(&font.token) && is_token(&font.key))
+    else {
+        return css;
+    };
+    let key = if font.key == "default" {
+        String::new()
+    } else {
+        format!("--{}", font.key)
+    };
+    let font = format!("font-family:var(--font-{}{key})", font.token);
+    if css.is_empty() {
+        font
+    } else {
+        format!("{font};{css}")
+    }
 }
 
 /// SVG body of a theme icon, as in preview.py's `ICONS`.
@@ -177,7 +202,16 @@ impl Writer {
         if icon.name.is_empty() || icon.name == "none" {
             return String::new();
         }
-        let attrs = self.attrs("dx-icon", extra, &css_of(&icon.style, false));
+        let attrs = self.attrs(
+            "dx-icon",
+            extra,
+            &styled_css(
+                &icon.style,
+                &icon.text_style,
+                false,
+                icon.style.get("font").is_some(),
+            ),
+        );
         format!("<{element}{attrs}>{}</{element}>", self.svg(&icon.name))
     }
 
@@ -196,7 +230,16 @@ impl Writer {
             return String::new();
         };
         let tag = if block { "div" } else { "span" };
-        let attrs = self.attrs(&format!("dx-{which}"), "", &css_of(&generated.style, block));
+        let attrs = self.attrs(
+            &format!("dx-{which}"),
+            "",
+            &styled_css(
+                &generated.style,
+                &generated.text_style,
+                block,
+                generated.style.get("font").is_some(),
+            ),
+        );
         format!("<{tag}{attrs}>{}</{tag}>", escape(&generated.text))
     }
 
@@ -204,7 +247,36 @@ impl Writer {
         match child {
             RenderChild::Text(text) => escape(text),
             RenderChild::Node(node) => self.node(node),
+            RenderChild::Tabs(tabs) => self.tabs(tabs),
         }
+    }
+
+    fn tabs(&self, tabs: &[Tab]) -> String {
+        let mut buttons = String::new();
+        let mut panels = String::new();
+        for (index, tab) in tabs.iter().enumerate() {
+            let text = tab
+                .label
+                .as_ref()
+                .map(|label| self.node(label))
+                .unwrap_or_else(|| (index + 1).to_string());
+            let accent = tab
+                .accent
+                .as_ref()
+                .filter(|token| is_token(token))
+                .map(|token| format!(" style=\"--tab-accent:var(--c-{})\"", escape(token)))
+                .unwrap_or_default();
+            let selected = if index == 0 { "true" } else { "false" };
+            buttons.push_str(&format!("<button class=\"dx-tab\" role=\"tab\" aria-selected=\"{selected}\"{accent}>{text}</button>"));
+            let hidden = if index == 0 { "" } else { " hidden" };
+            panels.push_str(&format!(
+                "<div class=\"dx-tab-panel\" role=\"tabpanel\"{hidden}>{}</div>",
+                self.node(&tab.panel)
+            ));
+        }
+        format!(
+            "<div class=\"dx-tabs\"><div class=\"dx-tab-bar\" role=\"tablist\">{buttons}</div>{panels}</div>"
+        )
     }
 
     fn children(&self, node: &RenderNode) -> String {
@@ -223,7 +295,12 @@ impl Writer {
                 extra.push_str(&format!(" data-anchor=\"{}\"", anchor.number));
             }
         }
-        let mut css = css_of(&node.style, node.block);
+        let mut css = styled_css(
+            &node.style,
+            &node.text,
+            node.block,
+            node.style.get("font").is_some() || node.lang.is_some(),
+        );
         if !node.block && node.style.get("background").is_some() {
             css.push_str(";display:inline-block");
             if node.style.flag("hide_text") {
@@ -257,11 +334,10 @@ impl Writer {
                 Markup::App => audio.urls.join(" "),
             };
             let region = audio.region.as_deref().unwrap_or_default();
-            let extra = format!(
-                " data-audio=\"{}\" title=\"{}\"",
-                escape(&url),
-                escape(region)
-            );
+            let mut extra = format!(" data-audio=\"{}\"", escape(&url));
+            if markup == Markup::App {
+                extra.push_str(&format!(" title=\"{}\"", escape(region)));
+            }
             body.push_str(&self.icon(&audio.icon, "button", &extra));
         }
         if let Some(image) = &node.image {
@@ -313,7 +389,12 @@ impl Writer {
             let css = format!(
                 "width:{}em;{}",
                 escape(&marker.width.to_string()),
-                css_of(&marker.style, false)
+                styled_css(
+                    &marker.style,
+                    &marker.text_style,
+                    false,
+                    marker.style.get("font").is_some()
+                )
             );
             format!("<span{}>{mark}</span>", self.attrs("dx-marker", "", &css))
         });
@@ -398,11 +479,85 @@ mod tests {
     }
 
     #[test]
+    fn tabs_draw_labels_numbers_accents_and_selected_panels_in_both_markups() {
+        let mut panel = node("panel", Vec::new());
+        panel.anchor = Some(Anchor {
+            id: "p1".into(),
+            number: 1,
+        });
+        let tabs = vec![
+            Tab {
+                label: Some(node("label", vec![RenderChild::Text("Noun".into())])),
+                accent: Some("accent".into()),
+                panel,
+            },
+            Tab {
+                label: None,
+                accent: None,
+                panel: node("panel", Vec::new()),
+            },
+        ];
+        let root = node("entry", vec![RenderChild::Tabs(tabs)]);
+        let preview = html(&root, Markup::Preview);
+        assert_eq!(
+            preview,
+            concat!(
+                "<span class=\"dx-entry\" style=\"\"><div class=\"dx-tabs\"><div class=\"dx-tab-bar\" role=\"tablist\">",
+                "<button class=\"dx-tab\" role=\"tab\" aria-selected=\"true\" style=\"--tab-accent:var(--c-accent)\">",
+                "<span class=\"dx-label\" style=\"\">Noun</span></button>",
+                "<button class=\"dx-tab\" role=\"tab\" aria-selected=\"false\">2</button></div>",
+                "<div class=\"dx-tab-panel\" role=\"tabpanel\"><span class=\"dx-panel\" id=\"p1\" style=\"\"></span></div>",
+                "<div class=\"dx-tab-panel\" role=\"tabpanel\" hidden><span class=\"dx-panel\" style=\"\"></span></div></div></span>"
+            )
+        );
+        let app = html(&root, Markup::App);
+        assert!(app.contains("class=\"dx-tab-bar\" role=\"tablist\""));
+        assert!(app.contains("role=\"tab\" aria-selected=\"false\">2</button>"));
+        assert!(app.contains("class=\"dx-panel\" id=\"p1\" data-anchor=\"1\""));
+        assert!(app.contains("role=\"tabpanel\" hidden>"));
+    }
+
+    #[test]
+    fn restates_resolved_node_fonts_and_only_explicit_pseudo_fonts() {
+        let mut child = node("body", Vec::new());
+        child.lang = Some("zh-Hans".into());
+        child.text.font = Some(zdict_core::Font {
+            token: "text".into(),
+            key: "zh".into(),
+        });
+        let mut pseudo = Generated {
+            text: "before".into(),
+            style: Style::default(),
+            text_style: child.text.clone(),
+        };
+        child.before = Some(pseudo.clone());
+        let preview = html(&child, Markup::Preview);
+        assert!(preview.starts_with(
+            "<span class=\"dx-body\" lang=\"zh-Hans\" style=\"font-family:var(--font-text--zh)\">"
+        ));
+        assert!(preview.contains("<span class=\"dx-before\" style=\"\">before</span>"));
+        pseudo.style.set("font", Value::Str("text".into()));
+        child.before = Some(pseudo);
+        child.lang = None;
+        let preview = html(&child, Markup::Preview);
+        assert!(preview.starts_with("<span class=\"dx-body\" style=\"\">"));
+        assert!(
+            preview
+                .contains("<span class=\"dx-before\" style=\"font-family:var(--font-text--zh)\">")
+        );
+    }
+
+    #[test]
     fn hostile_values_cannot_leave_their_attribute() {
         let mut bad = node("x\"><script>", vec![RenderChild::Text("<b>".into())]);
         bad.lang = Some("en\" onclick=\"x".into());
         bad.style.set("color", Value::Str("red;}<x".into()));
         bad.style.set("weight", Value::Str("bold".into()));
+        bad.style.set("font", Value::Str("bad".into()));
+        bad.text.font = Some(zdict_core::Font {
+            token: "bad;}<x".into(),
+            key: "default".into(),
+        });
         let html = html(&bad, Markup::App);
         assert!(!html.contains("<script") && !html.contains("<b>") && !html.contains("\" onclick"));
         let class = style_class("font-weight:700");

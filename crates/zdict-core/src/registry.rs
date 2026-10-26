@@ -1,4 +1,4 @@
-//! The type registry, `types.toml` in a pack (spec/v0.md §3).
+//! The type registry, `types.toml` in a pack (spec/v1.md §3).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -17,14 +17,24 @@ pub enum Kind {
 pub enum Role {
     /// Its text goes into the lookup index.
     Index,
-    /// Playable (`attrs.audio` or `attrs.res`).
+    /// Playable through the first declared resource attribute.
     Audio,
-    /// A picture (`attrs.res`).
+    /// A picture through the first declared resource attribute.
     Image,
     /// Navigates to `attrs.entry` / `attrs.anchor`, or looks up its text.
     Link,
     /// Can be the target of a link (has an `id`).
     Anchor,
+    /// A positive homograph number displayed beside the headword.
+    Homograph,
+    /// Controlled by the pronunciation display switch.
+    Pronunciation,
+    /// Controlled by the examples display switch.
+    Example,
+    /// May be omitted when expanding index readings.
+    Optional,
+    /// Adjacent nodes of this type offer alternative index readings.
+    Choice,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +45,10 @@ pub struct TypeSpec {
     /// Attribute name -> declared type (`string`, `int`, `res?`, `enum(a|b)`…).
     pub attrs: BTreeMap<String, String>,
     pub roles: Vec<Role>,
+    /// Lookup kind, present exactly when this type has the index role.
+    pub index: Option<String>,
+    /// Resource attribute names, in declaration order.
+    pub res_attrs: Vec<String>,
 }
 
 /// Every node type a pack's entries may contain.
@@ -46,6 +60,15 @@ pub struct Registry {
 impl Registry {
     pub fn parse(text: &str) -> Result<Self> {
         let data: toml::Table = text.parse().map_err(|err| bad_types(&err))?;
+        let meta = table(&data, "meta")?;
+        if meta.get("format").and_then(toml::Value::as_str) != Some("zdict-types")
+            || meta.get("version").and_then(toml::Value::as_integer) != Some(1)
+        {
+            return Err(bad_types("not a zdict-types v1 type registry"));
+        }
+        if !data.contains_key("types") {
+            return Err(bad_types("missing [types]"));
+        }
         let groups = table(&data, "groups")?;
         let mut types = HashMap::new();
         for (name, spec) in table(&data, "types")? {
@@ -62,15 +85,22 @@ impl Registry {
                 expand(groups, &child, name, &mut Vec::new(), &mut children)?;
             }
             let mut attrs = BTreeMap::new();
-            if let Some(declared) = spec.get("attrs").and_then(toml::Value::as_table) {
-                for (attr, kind) in declared {
-                    let kind = kind
-                        .as_str()
-                        .ok_or_else(|| bad_types(format!("{name}.{attr} is not a string")))?;
-                    attrs.insert(attr.clone(), kind.to_owned());
+            let mut res_attrs = Vec::new();
+            for (attr, kind) in table(spec, "attrs")? {
+                let kind = kind
+                    .as_str()
+                    .ok_or_else(|| bad_types(format!("{name}.{attr} is not a string")))?;
+                if !valid_attr_kind(kind) {
+                    return Err(bad_types(format!(
+                        "{name}.{attr}: invalid attribute type {kind}"
+                    )));
                 }
+                if kind.trim_end_matches('?') == "res" {
+                    res_attrs.push(attr.clone());
+                }
+                attrs.insert(attr.clone(), kind.to_owned());
             }
-            let roles = strings(spec, "roles", name)?
+            let roles: Vec<Role> = strings(spec, "roles", name)?
                 .iter()
                 .map(|role| match role.as_str() {
                     "index" => Ok(Role::Index),
@@ -78,9 +108,28 @@ impl Registry {
                     "image" => Ok(Role::Image),
                     "link" => Ok(Role::Link),
                     "anchor" => Ok(Role::Anchor),
+                    "homograph" => Ok(Role::Homograph),
+                    "pronunciation" => Ok(Role::Pronunciation),
+                    "example" => Ok(Role::Example),
+                    "optional" => Ok(Role::Optional),
+                    "choice" => Ok(Role::Choice),
                     other => Err(bad_types(format!("{name}: unknown role {other}"))),
                 })
                 .collect::<Result<_>>()?;
+            let index = spec.get("index").and_then(toml::Value::as_str);
+            if roles.contains(&Role::Index) != spec.contains_key("index")
+                || (spec.contains_key("index")
+                    && !matches!(
+                        index,
+                        Some(
+                            "headword" | "variant" | "inflection" | "phrase" | "reading" | "hidden"
+                        )
+                    ))
+            {
+                return Err(bad_types(format!(
+                    "{name}: an index role needs an index kind, and only then"
+                )));
+            }
             types.insert(
                 name.clone(),
                 TypeSpec {
@@ -88,8 +137,17 @@ impl Registry {
                     children,
                     attrs,
                     roles,
+                    index: index.map(String::from),
+                    res_attrs,
                 },
             );
+        }
+        for (name, spec) in &types {
+            for child in &spec.children {
+                if child != "#text" && !types.contains_key(child) {
+                    return Err(bad_types(format!("{name}: unknown child type {child}")));
+                }
+            }
         }
         Ok(Registry { types })
     }
@@ -102,9 +160,24 @@ impl Registry {
         self.types.contains_key(kind)
     }
 
-    /// Default layout; types the registry does not know display inline (spec v0 §3).
+    /// Default layout; types the registry does not know display inline (spec v1 §3).
     pub fn kind(&self, kind: &str) -> Kind {
         self.get(kind).map_or(Kind::Inline, |spec| spec.kind)
+    }
+
+    /// Lookup kind declared by an index-role type.
+    pub fn index_kind(&self, kind: &str) -> Option<&str> {
+        self.get(kind).and_then(|spec| spec.index.as_deref())
+    }
+
+    /// Resource attributes in declaration order; unknown types have none.
+    pub fn res_attrs(&self, kind: &str) -> &[String] {
+        self.get(kind).map_or(&[], |spec| &spec.res_attrs)
+    }
+
+    /// Behaviour roles; unknown types have none.
+    pub fn roles(&self, kind: &str) -> &[Role] {
+        self.get(kind).map_or(&[], |spec| &spec.roles)
     }
 
     pub fn has_role(&self, kind: &str, role: Role) -> bool {
@@ -179,6 +252,24 @@ fn strings(spec: &toml::Table, key: &str, name: &str) -> Result<Vec<String>> {
         .ok_or_else(|| bad_types(format!("{name}.{key} is not a list of strings")))
 }
 
+/// Attribute declarations use the protocol's deliberately small grammar.
+fn valid_attr_kind(kind: &str) -> bool {
+    let kind = kind.strip_suffix('?').unwrap_or(kind);
+    if matches!(kind, "string" | "int" | "bool" | "res" | "ref") {
+        return true;
+    }
+    kind.strip_prefix("enum(")
+        .and_then(|kind| kind.strip_suffix(')'))
+        .is_some_and(|values| {
+            values.split('|').all(|value| {
+                !value.is_empty()
+                    && value
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+            })
+        })
+}
+
 fn bad_types(reason: impl ToString) -> Error {
     Error::BadFile {
         name: "types.toml".to_owned(),
@@ -193,7 +284,7 @@ mod tests {
     const TYPES: &str = r##"
 [meta]
 format = "zdict-types"
-version = 0
+version = 1
 [groups]
 inline = ["#text", "strong"]
 [types.entry]
@@ -225,12 +316,90 @@ children = ["#text"]
     fn expands_groups_inside_groups() {
         let text = "[groups]\nouter = [\"@inner\", \"b\"]\ninner = [\"#text\"]\n\
                     [types.a]\nkind = \"block\"\nchildren = [\"@outer\"]\n";
-        let registry = Registry::parse(text).unwrap();
+        let registry = Registry::parse(&format!(
+            "[meta]\nformat = \"zdict-types\"\nversion = 1\n{text}[types.b]\nkind = \"inline\"\n"
+        ))
+        .unwrap();
         let children = &registry.get("a").unwrap().children;
         assert_eq!(
             children,
             &HashSet::from(["#text".to_owned(), "b".to_owned()])
         );
+    }
+
+    #[test]
+    fn v1_roles_index_kinds_and_resource_order() {
+        let registry = Registry::parse(
+            r#"
+[meta]
+format = "zdict-types"
+version = 1
+[types.word]
+kind = "inline"
+roles = ["index", "homograph", "pronunciation", "example", "optional", "choice"]
+index = "reading"
+attrs = { z_sound = "res?", a_picture = "res", n = "int", flag = "bool?", e = "enum(a|B_2.x-3)?" }
+"#,
+        )
+        .unwrap();
+        assert_eq!(registry.index_kind("word"), Some("reading"));
+        assert_eq!(registry.res_attrs("word"), ["z_sound", "a_picture"]);
+        assert_eq!(
+            registry.roles("word"),
+            [
+                Role::Index,
+                Role::Homograph,
+                Role::Pronunciation,
+                Role::Example,
+                Role::Optional,
+                Role::Choice
+            ]
+        );
+        assert!(registry.roles("unknown").is_empty());
+        assert!(registry.res_attrs("unknown").is_empty());
+        assert_eq!(registry.index_kind("unknown"), None);
+    }
+
+    #[test]
+    fn rejects_invalid_v1_declarations() {
+        let prefix = "[meta]\nformat = \"zdict-types\"\nversion = 1\n";
+        for declaration in [
+            "kind = \"grid\"",
+            "kind = \"inline\"\nchildren = [\"missing\"]",
+            "kind = \"inline\"\nroles = [\"fly\"]",
+            "kind = \"inline\"\nroles = [\"index\"]",
+            "kind = \"inline\"\nindex = \"headword\"",
+            "kind = \"inline\"\nroles = [\"index\"]\nindex = \"word\"",
+            "kind = \"inline\"\nroles = [\"index\"]\nindex = 1",
+        ] {
+            assert!(
+                Registry::parse(&format!("{prefix}[types.a]\n{declaration}")).is_err(),
+                "{declaration}"
+            );
+        }
+        for attr in [
+            "float",
+            "res??",
+            "enum()",
+            "enum(a|)",
+            "enum(a b)",
+            "string[]",
+        ] {
+            assert!(
+                Registry::parse(&format!(
+                    "{prefix}[types.a]\nkind = \"inline\"\nattrs = {{ a = {attr:?} }}"
+                ))
+                .is_err(),
+                "{attr}"
+            );
+        }
+        for meta in [
+            "",
+            "[meta]\nformat = \"zdict-types\"\nversion = 0\n",
+            "[meta]\nformat = \"zdict-theme\"\nversion = 1\n",
+        ] {
+            assert!(Registry::parse(&format!("{meta}[types.a]\nkind = \"inline\"")).is_err());
+        }
     }
 
     #[test]

@@ -20,6 +20,10 @@ details>summary::after{content:"";position:absolute;right:.2em;top:.35em;width:.
 details:not([open])>summary::after{transform:rotate(-45deg)}
 .dx-link{color:inherit;text-decoration:none}
 .dx-link:hover{text-decoration:underline}
+.dx-tab-bar{display:flex;gap:1.5em;border-bottom:1px solid var(--c-rule);margin:1.4em 0 0}
+.dx-tab{border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:none;padding:.4em .1em .45em;font:inherit;color:inherit;cursor:pointer;opacity:.62}
+.dx-tab[aria-selected="true"]{opacity:1;border-bottom-color:var(--tab-accent,currentColor)}
+.dx-tab-panel>*:first-child{margin-top:.6em}
 .dx-title{font-family:var(--font-ui);font-weight:700;font-size:.8em;letter-spacing:.06em;text-transform:uppercase;color:var(--c-faint);margin-bottom:.2em}
 .dx-table{display:table;border-collapse:collapse}
 .dx-row{display:table-row}
@@ -51,7 +55,19 @@ pub fn theme_css(stack: &ThemeStack) -> String {
         .fonts()
         .iter()
         .filter(|(token, _)| is_token(token))
-        .map(|(token, families)| format!("--font-{token}:{}", family_list(families)))
+        .flat_map(|(token, stacks)| {
+            stacks
+                .iter()
+                .filter(|(key, _)| is_token(key))
+                .map(move |(key, families)| {
+                    let suffix = if key == "default" {
+                        String::new()
+                    } else {
+                        format!("--{key}")
+                    };
+                    format!("--font-{token}{suffix}:{}", family_list(families))
+                })
+        })
         .collect();
     let colors = |scheme: &str| -> Vec<String> {
         stack
@@ -153,7 +169,7 @@ mod tests {
     fn writes_tokens_for_both_schemes_and_quotes_only_named_families() {
         let theme = Theme::parse(
             "t",
-            "[meta]\nformat = \"zdict-theme\"\n[fonts]\ntext = [\"Source Serif 4\", \"serif\"]\n\
+            "[meta]\nformat = \"zdict-theme\"\nversion = 1\n[fonts.text]\ndefault = [\"Source Serif 4\", \"serif\"]\nzh = [\"Chinese\"]\n\"zh-Hans\" = [\"Simplified\"]\n\
              [colors.light]\nfg = \"#111\"\nbad = \"red;}body{x\"\n[colors.dark]\nfg = \"rgb(1, 2, 3)\"\n",
         )
         .unwrap();
@@ -161,11 +177,14 @@ mod tests {
         let first = css.lines().next().unwrap();
         assert_eq!(
             first,
-            ":root{--font-text:\"Source Serif 4\", serif;--c-fg:#111}"
+            ":root{--font-text:\"Source Serif 4\", serif;--font-text--zh:\"Chinese\";--font-text--zh-Hans:\"Simplified\";--c-fg:#111}"
         );
         assert!(css.contains(":root[data-theme=\"dark\"]{--c-fg:rgb(1, 2, 3)}"));
         assert!(!css.contains("body{x"));
         assert!(css.contains("button.dx-icon"));
+        assert!(css.contains(".dx-tab-bar{display:flex"));
+        assert!(css.contains(".dx-tab[aria-selected=\"true\"]"));
+        assert!(css.contains(".dx-tab-panel>*:first-child"));
         assert!(css.contains(".dx-i-speaker{--dx-icon:url(\"data:image/svg+xml,%3Csvg xmlns="));
         assert!(!css.contains(".dx-i-arrow"), "the arrow stays inline");
     }
