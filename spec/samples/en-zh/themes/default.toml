@@ -1,0 +1,158 @@
+# 默认主题：词条怎么显示（spec/v1.md §4）。
+
+[meta]
+format = "zdict-theme"
+version = 1
+name = "默认"
+
+# 字体令牌按语言给候选字体；没有列出的语言用 default。
+[fonts.text]
+default = ["Source Serif 4", "Noto Serif", "serif"]
+"zh-Hans" = ["Noto Serif CJK SC", "Source Han Serif SC", "serif"]
+
+[fonts.ui]
+default = ["Inter", "Noto Sans", "sans-serif"]
+"zh-Hans" = ["Noto Sans CJK SC", "sans-serif"]
+
+[fonts.phonetic]
+default = ["Charis SIL", "Source Serif 4", "serif"]
+
+[colors.light]
+fg = "#1b1c1f"
+muted = "#6c6e75"
+accent = "#2a4a9b"
+rule = "#e4e4e0"
+chip = "#cfd0cc"
+
+[colors.dark]
+fg = "#e5e5e7"
+muted = "#9b9da4"
+accent = "#93abea"
+rule = "#2d2e33"
+chip = "#43454b"
+
+[style.entry]
+font = "text"
+color = "fg"
+
+[style."entry > head > headword"]
+size = 2.3
+weight = "bold"
+
+[style.badge]
+font = "ui"
+size = 0.65
+color = "muted"
+padding = 0.25
+radius = 0.25
+space_start = 0.4
+
+[style."badge[scheme=core]"]
+icon = "key"
+hide_text = true
+color = "accent"
+
+[style.variant]
+before = "("
+after = ")"
+color = "muted"
+style = "italic"
+
+[style.pron_list]
+display = "block"
+space_before = 0.3
+
+[style.pron]
+join = "  "
+
+[style."pron::before"]
+font = "ui"
+size = 0.8
+color = "muted"
+
+[style."pron[region=GB]"]
+before = "英 "
+
+[style."pron[region=US]"]
+before = "美 "
+
+[style.ipa]
+font = "phonetic"
+before = "/"
+after = "/"
+
+[style.pos_group]
+space_before = 1.4
+tabs = true               # 词性画成标签页（spec/v1.md §4.4）
+tab_label = "head > pos"
+tab_accent = "accent"
+
+[style.pos]
+style = "italic"
+weight = "bold"
+
+[style.inflections]
+before = " ("
+after = ")"
+color = "muted"
+
+[style.infl_form]
+join = ", "
+
+[style.sense]
+before = "{n} "
+space_before = 0.8
+
+[style."sense::before"]
+weight = "bold"
+color = "accent"
+
+[style."definition[lang=zh]"]
+before = " "
+
+[style.example]
+display = "block"
+marker = "◆"
+indent = 1.2
+space_before = 0.4
+
+[style."example::marker"]
+size = 0.6
+color = "accent"
+
+[style.example_text]
+display = "block"
+style = "italic"
+
+[style."example_text[lang=zh]"]
+style = "normal"
+color = "muted"
+
+[style.idiom_list]
+title = "习语"
+divider = "rule"
+space_before = 1.6
+
+[style."idiom_list::title"]
+font = "ui"
+size = 0.8
+color = "muted"
+
+[style.phrase]
+display = "block"
+weight = "bold"
+
+[style.xref]
+space_before = 0.6
+color = "muted"
+
+[style.target]
+color = "accent"
+case = "small-caps"
+
+[style.translation]
+before = " "
+
+[style.image]
+max_width = 16
+space_before = 1

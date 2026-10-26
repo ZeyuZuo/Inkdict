@@ -1,0 +1,138 @@
+# 类型表：这部词典有哪些节点类型、怎么嵌套、各有什么用途（spec/v1.md §3）。
+# 类型名属于这部词典自己；软件只认 roles，不认类型名。
+
+[meta]
+format = "zdict-types"
+version = 1
+
+[groups]
+inline = ["#text", "strong", "target", "translation"]
+head = ["headword", "badge", "variant", "pron_list", "pos", "inflections"]
+
+[types.entry]
+kind = "block"
+children = ["head", "pos_group", "image", "xref"]
+roles = ["anchor"]
+
+[types.head]
+kind = "block"
+children = ["@head"]
+
+[types.headword]
+kind = "inline"
+children = ["#text"]
+roles = ["index"]
+index = "headword"
+
+[types.badge]
+kind = "inline"
+children = ["#text"]
+attrs = { scheme = "enum(core|level)" }
+doc = "core：核心词汇；level：难度等级"
+
+[types.variant]
+kind = "inline"
+children = ["label", "variant_form"]
+
+[types.variant_form]
+kind = "inline"
+children = ["#text"]
+roles = ["index"]
+index = "variant"
+
+[types.label]
+kind = "inline"
+children = ["#text", "translation"]
+
+[types.pron_list]
+kind = "inline"
+children = ["pron"]
+roles = ["pronunciation"]
+
+[types.pron]
+kind = "inline"
+children = ["ipa"]
+attrs = { region = "enum(GB|US)", audio = "res?" }
+roles = ["audio"]
+
+[types.ipa]
+kind = "inline"
+children = ["#text"]
+
+[types.pos_group]
+kind = "block"
+doc = "一个词性下的全部内容"
+children = ["head", "sense", "idiom_list"]
+roles = ["anchor"]
+
+[types.pos]
+kind = "inline"
+children = ["#text"]
+
+[types.inflections]
+kind = "inline"
+children = ["infl_form"]
+
+[types.infl_form]
+kind = "inline"
+children = ["#text"]
+roles = ["index"]
+index = "inflection"
+
+[types.sense]
+kind = "block"
+children = ["definition", "example", "xref"]
+attrs = { n = "int?" }
+roles = ["anchor"]
+
+[types.definition]
+kind = "inline"
+children = ["@inline"]
+
+[types.example]
+kind = "block"
+children = ["example_text"]
+roles = ["anchor", "example"]
+
+[types.example_text]
+kind = "inline"
+children = ["@inline"]
+
+[types.idiom_list]
+kind = "block"
+children = ["idiom"]
+
+[types.idiom]
+kind = "block"
+children = ["phrase", "sense"]
+roles = ["anchor"]
+
+[types.phrase]
+kind = "inline"
+children = ["#text"]
+roles = ["index"]
+index = "phrase"
+
+[types.xref]
+kind = "block"
+children = ["#text", "target"]
+
+[types.target]
+kind = "inline"
+children = ["#text"]
+attrs = { entry = "ref?", anchor = "ref?" }
+roles = ["link"]
+
+[types.image]
+kind = "block"
+attrs = { res = "res" }
+roles = ["image"]
+
+[types.strong]
+kind = "inline"
+children = ["@inline"]
+
+[types.translation]
+kind = "inline"
+doc = "附在短文本后的译文，如标签 NAmE 美式"
+children = ["#text"]
