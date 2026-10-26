@@ -369,12 +369,21 @@ impl<'a> Renderer<'a> {
         }
         rendered.title = self.generated(&path, &text, Pseudo::Title, style.str("title"), attrs);
         if let Some(state) = style.str("collapse").filter(|state| *state != "none") {
-            let summary = node
-                .child_nodes()
-                .next()
-                .map(|first| RenderChild::Node(Box::new(self.node(cx, first, &path))));
-            rendered.children =
-                self.children(cx, node.children.get(1..).unwrap_or_default(), &path);
+            // The first child, string or node, stays visible (spec v1 §4.2);
+            // a hidden first node leaves no summary. The reference renderer
+            // takes the first node and drops a leading string instead.
+            let (summary, rest) = match &node.text {
+                Some(own) => (Some(RenderChild::Text(own.clone())), Vec::new()),
+                None => {
+                    let split = node.children.len().min(1);
+                    let first = self.children(cx, &node.children[..split], &path);
+                    (
+                        first.into_iter().next(),
+                        self.children(cx, &node.children[split..], &path),
+                    )
+                }
+            };
+            rendered.children = rest;
             rendered.collapse = Some(Collapse {
                 open: state == "open",
                 summary: summary.map(Box::new),
@@ -823,6 +832,38 @@ font = "ui"
         assert_eq!(
             node(&root.children[5]).children,
             [RenderChild::Text("unknown".into())]
+        );
+    }
+
+    #[test]
+    fn collapses_a_leading_string_or_own_text_and_skips_hidden_summaries() {
+        let theme = "[style.panel]\ncollapse = \"closed\"\n[style.label]\ndisplay = \"none\"";
+        let root = render(
+            theme,
+            r#"{"type":"panel","children":["lead",{"type":"body","text":"rest"}]},{"type":"panel","text":"own"},{"type":"panel","children":[{"type":"label","text":"x"},"tail"]}"#,
+        );
+        let summary = |n: usize| {
+            node(&root.children[n])
+                .collapse
+                .as_ref()
+                .unwrap()
+                .summary
+                .clone()
+        };
+        assert_eq!(
+            summary(0).as_deref(),
+            Some(&RenderChild::Text("lead".into()))
+        );
+        assert_eq!(node(&node(&root.children[0]).children[0]).kind, "body");
+        assert_eq!(
+            summary(1).as_deref(),
+            Some(&RenderChild::Text("own".into()))
+        );
+        assert!(node(&root.children[1]).children.is_empty());
+        assert_eq!(summary(2), None);
+        assert_eq!(
+            node(&root.children[2]).children,
+            [RenderChild::Text("tail".into())]
         );
     }
 
