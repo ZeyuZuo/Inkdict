@@ -226,7 +226,7 @@ rank = class × (B + 1) + importance
 | `variant`、`inflection` | 显示形式 → 所属词条的 `headword`（两者相同时不写箭头） |
 | `reading`、`hidden` | 词条的 `headword`；`reading` 后面接匹配到的读法（检索键相同的读法在打包时已只留一行，如 `hǎo`、`hào`） |
 
-下面一行是短释义：先找 `summaries` 中代表行的 `(entry, anchor)`，没有时找 `(entry, 0)`，再没有就不显示。
+下面一行是短释义：先找 `summaries` 中代表行的 `(entry, anchor)`。没有时，`variant`、`inflection`、`reading`、`hidden` 行和锚点为 0 的行用 `(entry, 0)`（它们与词头是同一个词）；嵌套词头和 `phrase` 是另一个词，不用整个词条的短释义，就不显示。
 
 ### 5.3 打开
 
