@@ -1,4 +1,4 @@
-//! Entry content: a tree of typed nodes (spec/v0.md §2).
+//! Entry content: a tree of typed nodes (spec/v1.md §2).
 
 use std::collections::BTreeMap;
 use std::fmt;

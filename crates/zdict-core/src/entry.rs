@@ -1,4 +1,4 @@
-//! Reading entries (spec/pack-v0.md §2.3).
+//! Reading entries (spec/pack-v1.md §2.3).
 
 use std::io::Read;
 

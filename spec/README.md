@@ -6,7 +6,6 @@
 | `pack-v1.md` | 源目录、打包、词典包 `.zdpack` 的格式、读取端的词表规则（草案） |
 | `pack-v1.sql` | `.zdpack` 的表结构 |
 | `samples/en-zh/` | 一部虚构英汉词典的完整源目录 |
-| `v0.md`、`pack-v0.md` | 旧版（已冻结）；核心和打包程序迁移到 v1 后删除 |
 
 具体词典的类型表和主题不在这里：它们属于词典，随 `.zdpack` 分发（Oxford 的在 OxDic 仓库 `packs/oalecd10/`）。
 

@@ -1,4 +1,4 @@
-//! Theme selectors (spec/v0.md §4.1), a port of OxDic's `oxdic/protocol.py`.
+//! Theme selectors (spec/v1.md §4.1), a port of OxDic's `oxdic/protocol.py`.
 
 use std::collections::BTreeMap;
 

@@ -1,4 +1,4 @@
-//! Anchors and link targets (spec/pack-v0.md §3.3, spec/v0.md §6).
+//! Anchors and link targets (spec/pack-v1.md §3.4, spec/v1.md §6).
 
 use serde::{Deserialize, Serialize};
 
@@ -86,7 +86,7 @@ impl Pack {
         self.resolve(current, &Link::of(node))
     }
 
-    /// Where `link` leads from `current` (spec v0 §6), falling back in order
+    /// Where `link` leads from `current` (spec/v1.md §6), falling back in order
     /// when a target is not in the pack: entry + anchor → that entry (its
     /// word family for `wfg`) → the anchor in the current entry → a lookup
     /// of the link's text.
