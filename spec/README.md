@@ -1,14 +1,14 @@
-# 协议
+# Inkdict protocol
 
-| 文件 | 内容 |
+| File | Contents |
 | --- | --- |
-| `v1.md` | 词条内容格式、类型表、主题、语言、链接、资源引用（草案） |
-| `pack-v1.md` | 源目录、打包、词典包 `.inkdict` 的格式、读取端的词表规则（草案） |
-| `pack-v1.sql` | `.inkdict` 的表结构 |
-| `samples/en-zh/` | 一部虚构英汉词典的完整源目录 |
+| [`v1.md`](v1.md) | Entry content, the type registry, themes, languages, links, resource references |
+| [`pack-v1.md`](pack-v1.md) | The source directory, packing, the `.inkdict` file format, the word-list rules for readers |
+| [`pack-v1.sql`](pack-v1.sql) | The `.inkdict` table definitions |
+| [`samples/en-zh/`](samples/en-zh/) | The complete source directory of a small invented English–Chinese dictionary |
 
-具体词典的类型表和主题不在这里：它们属于词典，随 `.inkdict` 分发（Oxford 的在 OxDic 仓库 `packs/oalecd10/`）。
+Version 1 is frozen (2026-10-27). Later revisions may only add what it allows to be added, or make an unclear rule explicit; they never change the meaning of an existing type, field or rule. A change in meaning starts version 2. (An earlier draft, v0, was never published as a stable format.)
 
-改动规则：发布后只能新增允许的结构，或把含糊的规则写明确，不改变已有类型和字段的含义。会改变含义的修改进入下一个大版本。
+A dictionary's own type registry and themes are not here: they belong to the dictionary and travel inside its `.inkdict` file.
 
-本目录（协议文档与 `samples/`）以 CC BY 4.0 发布，全文见 `LICENSE`。
+This directory (the protocol documents and `samples/`) is published under CC BY 4.0; see [`LICENSE`](LICENSE). Implementing readers, packers or dictionaries that follow the protocol needs no further permission.

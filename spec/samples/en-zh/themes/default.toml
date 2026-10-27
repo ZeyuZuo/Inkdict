@@ -1,11 +1,11 @@
-# 默认主题：词条怎么显示（spec/v1.md §4）。
+# The default theme: how entries look (spec/v1.md §4).
 
 [meta]
 format = "inkdict-theme"
 version = 1
-name = "默认"
+name = "Default"
 
-# 字体令牌按语言给候选字体；没有列出的语言用 default。
+# Font tokens give candidate fonts per language; languages not listed use default.
 [fonts.text]
 default = ["Source Serif 4", "Noto Serif", "serif"]
 "zh-Hans" = ["Noto Serif CJK SC", "Source Han Serif SC", "serif"]
@@ -91,7 +91,7 @@ after = "/"
 
 [style.pos_group]
 space_before = 1.4
-tabs = true               # 词性画成标签页（spec/v1.md §4.4）
+tabs = true               # parts of speech become tabs (spec/v1.md §4.4)
 tab_label = "head > pos"
 tab_accent = "accent"
 

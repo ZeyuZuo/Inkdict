@@ -1,5 +1,6 @@
-# 类型表：这部词典有哪些节点类型、怎么嵌套、各有什么用途（spec/v1.md §3）。
-# 类型名属于这部词典自己；软件只认 roles，不认类型名。
+# The type registry: which node types this dictionary has, how they nest and
+# what they are for (spec/v1.md §3). Type names belong to this dictionary;
+# applications only know the roles.
 
 [meta]
 format = "inkdict-types"
@@ -26,13 +27,13 @@ index = "headword"
 
 [types.homograph]
 kind = "inline"
-doc = "同形词编号：拼写相同的几个词条各自的序号"
+doc = "homograph number: tells apart entries spelled the same"
 children = ["#text"]
 roles = ["homograph"]
 
 [types.form_index]
 kind = "inline"
-doc = "只用于检索、不显示的词形"
+doc = "a form used only for lookup, never shown"
 children = ["#text"]
 roles = ["index"]
 index = "hidden"
@@ -41,7 +42,7 @@ index = "hidden"
 kind = "inline"
 children = ["#text"]
 attrs = { scheme = "enum(core|level)" }
-doc = "core：核心词汇；level：难度等级"
+doc = "core: core vocabulary; level: difficulty level"
 
 [types.variant]
 kind = "inline"
@@ -74,7 +75,7 @@ children = ["#text"]
 
 [types.pos_group]
 kind = "block"
-doc = "一个词性下的全部内容"
+doc = "everything under one part of speech"
 children = ["head", "sense", "idiom_list"]
 roles = ["anchor"]
 
@@ -128,13 +129,13 @@ index = "phrase"
 
 [types.alt]
 kind = "inline"
-doc = "相邻的几个 alt 任选其一，各自进索引"
+doc = "adjacent alt nodes are alternatives; each one is indexed"
 children = ["#text"]
 roles = ["choice"]
 
 [types.opt]
 kind = "inline"
-doc = "可有可无的部分，有和没有都进索引"
+doc = "an optional part; readings with and without it are indexed"
 children = ["#text"]
 roles = ["optional"]
 
@@ -159,5 +160,5 @@ children = ["@inline"]
 
 [types.translation]
 kind = "inline"
-doc = "附在短文本后的译文，如标签 NAmE 美式"
+doc = "a translation after a short text, e.g. the label NAmE 美式"
 children = ["#text"]

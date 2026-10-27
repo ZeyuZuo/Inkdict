@@ -1,46 +1,48 @@
-# 词典源目录示例
+# Sample source directory
 
-`en-zh/` 是一部虚构的英汉双解词典在打包前的源目录，格式见 `../pack-v1.md` §1。打包后的表结构见 `../pack-v1.sql`。
+`en-zh/` is the source directory of a small invented English–Chinese dictionary, before packing. The format is described in [`../pack-v1.md`](../pack-v1.md) §1; the packed tables in [`../pack-v1.sql`](../pack-v1.sql).
 
-| 文件 | 内容 |
+Build it with `inkdict pack spec/samples/en-zh/manifest.toml -o sample.inkdict`.
+
+| File | Contents |
 |---|---|
-| `manifest.toml` | 包信息、语言、文件位置、检索设置、在线资源源 |
-| `types.toml` | 类型表：类型、嵌套、属性、roles |
-| `themes/default.toml` | 主题 |
-| `entries.jsonl` | 6 个词条（harbour、lantern、go、lead¹、lead²、café），每行一棵节点树 |
-| `summaries.jsonl` | 短释义：词表里每行下面那句话，一个词条或锚点一条 |
-| `resources/` | 音频、图片；`audio:harbour-us` 故意缺省，演示回退到在线源 |
+| `manifest.toml` | Pack information, languages, file locations, lookup settings, an online resource source |
+| `types.toml` | The type registry: types, nesting, attributes, roles |
+| `themes/default.toml` | The theme |
+| `entries.jsonl` | 6 entries (harbour, lantern, go, lead¹, lead², café), one node tree per line |
+| `summaries.jsonl` | Word-list summaries, one per entry or anchor |
+| `resources/` | Audio and a picture stored in the pack; `audio:harbour-us` is missing on purpose, to show the fallback to the online source |
 
-它演示了：
-- 两种语言（`targets = ["zh-Hans"]`），按语言选字体；
-- 词性标签页（主题 `tabs`）；
-- 同形词 lead¹、lead²（`homograph` role），以及 `boost` 让带核心词徽章的 lead¹ 排在前面；
-- 变体、屈折形式、习语、只用于检索的隐藏词形（`hidden`）进索引；
-- `fold-1` 检索键：café、cafe、CAFÉ 都能查到 café；
-- 读法展开：`alt`（`choice` role）给出 go all out / go flat out，`opt`（`optional` role）给出 lead sb the way / lead the way；
-- 词条之间的链接（lead¹ ↔ lead²、lantern → harbour 的锚点）；
-- 资源打进包里，以及包里没有时回退到在线源。
+It shows:
+- two languages (`targets = ["zh-Hans"]`) with fonts chosen per language;
+- part-of-speech tabs (the theme's `tabs`);
+- the homographs lead¹ and lead² (the `homograph` role), and `boost` ranking lead¹, which has a core-vocabulary badge, first;
+- variants, inflections, idioms and a hidden form (`hidden`) in the index;
+- `fold-1` lookup keys: café, cafe and CAFÉ all find café;
+- reading expansion: `alt` (the `choice` role) gives go all out / go flat out, `opt` (the `optional` role) gives lead sb the way / lead the way;
+- links between entries (lead¹ ↔ lead², lantern → an anchor in harbour);
+- files stored in the pack, and the fallback to an online source when one is not.
 
-单语词典写 `targets = []`，其余写法相同。
+A monolingual dictionary writes `targets = []`; everything else stays the same.
 
-## 打包后 lookup 里的行
+## Rows of `lookup` after packing
 
-| norm | form | 词条 | anchor | kind |
+| norm | form | entry | anchor | kind |
 |---|---|---|---|---|
-| harbour | harbour | harbour | 根 | headword |
-| harbor | harbor | harbour | 根 | variant |
-| harbours / harboured / harbouring | 同左 | harbour | v | inflection |
+| harbour | harbour | harbour | root | headword |
+| harbor | harbor | harbour | root | variant |
+| harbours / harboured / harbouring | same | harbour | v | inflection |
 | safeharbour | safe harbour | harbour | safe-harbour | phrase |
-| lantern | lantern | lantern | 根 | headword |
-| go | go | go | 根 | headword |
-| goes / went / gone / going | 同左 | go | v | inflection |
+| lantern | lantern | lantern | root | headword |
+| go | go | go | root | headword |
+| goes / went / gone / going | same | go | v | inflection |
 | onthego | on the go | go | on-the-go | phrase |
 | goallout / goflatout | go all out / go flat out | go | go-all-out | phrase |
-| lead | lead | lead¹ | 根 | headword |
-| leads | leads | lead¹ | 根 | hidden |
-| led / leading | 同左 | lead¹ | v | inflection |
+| lead | lead | lead¹ | root | headword |
+| leads | leads | lead¹ | root | hidden |
+| led / leading | same | lead¹ | v | inflection |
 | leadsbtheway / leadtheway | lead sb the way / lead the way | lead¹ | lead-the-way | phrase |
-| lead | lead | lead² | 根 | headword |
-| cafe | café | café | 根 | headword（变体 cafe 的键相同，只留词头这一行） |
+| lead | lead | lead² | root | headword |
+| cafe | café | café | root | headword (the variant cafe has the same key, so only the headword row is kept) |
 
-anchor 写的是节点 id，包里存的是它的先序编号。
+The anchor column shows the node `id`; the pack stores its pre-order number.

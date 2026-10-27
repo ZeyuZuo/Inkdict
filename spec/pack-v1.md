@@ -1,259 +1,247 @@
-# Inkdict 词典包 v1
+# Inkdict pack format, version 1
 
-状态：草案，2026-10-26。取代 v0 的包格式，不兼容 v0。
+Status: **frozen**, 2026-10-27, under the same rules as `v1.md`.
 
-打包程序把一部词典的**源目录**（§1）转换成一个 SQLite 文件 `.inkdict`（§2–§4，表结构见 `pack-v1.sql`），读取端只读打开。§5 是读取端查词的规则，两个客户端都按它实现，结果一致。
+A packer turns a dictionary's **source directory** (§1) into one SQLite file with the extension `.inkdict` (§2–§4; table definitions in `pack-v1.sql`). Readers open it read-only. §5 gives the rules for the word list, so that every application lists the same rows.
 
-参考实现都在本仓库：打包程序是 `crates/inkdict-pack`（命令 `inkdict pack`），读取端是 `crates/inkdict-core`。
+Both reference implementations are in this repository: the packer is `crates/inkdict-pack` (the command `inkdict pack`), the reader is `crates/inkdict-core`.
 
-## 1. 源目录
+## 1. Source directory
 
 ```text
-<词典>/
-  manifest.toml        从这里开始读
-  types.toml           类型表（v1.md §3）
-  themes/*.toml        主题（v1.md §4）
-  entries.jsonl        词条，每行一个
-  summaries.jsonl      短释义（可选）
-  resources/<类别>/    资源文件（可选）
+<dictionary>/
+  manifest.toml        reading starts here
+  types.toml           the type registry (v1.md §3)
+  themes/*.toml        themes (v1.md §4)
+  entries.jsonl        entries, one per line
+  summaries.jsonl      word-list summaries (optional)
+  resources/<kind>/    files stored in the pack (optional)
 ```
 
-完整示例：`samples/en-zh/`。文件名和位置以 manifest 为准，上面是惯例。
+A complete example is `samples/en-zh/`. The manifest decides the actual names and locations; the layout above is the convention.
 
 ### 1.1 manifest.toml
 
-| 键 | 必填 | 说明 |
+| Key | Required | Meaning |
 |---|---|---|
-| `meta.format`、`meta.version` | 是 | `inkdict-source`、`1` |
-| `pack.id` | 是 | 词典 ID：小写字母、数字、`-` |
-| `pack.title` | 是 | 显示名 |
-| `pack.edition`、`pack.license` | 否 | 版本、版权与使用限制 |
-| `languages.source` | 是 | 词头和原文的语言（BCP 47） |
-| `languages.targets` | 是 | 译文语言的数组；单语词典写 `[]` |
-| `files.types` | 是 | 类型表路径 |
-| `files.themes` | 是 | 主题路径的数组，第一个是默认主题 |
-| `files.entries` | 是 | 词条文件路径 |
-| `files.summaries` | 否 | 短释义文件路径 |
-| `files.resources` | 否 | 资源目录路径 |
-| `lookup.norm` | 是 | 检索键方案：`fold-1` 或 `exact-1`（§3.2） |
-| `lookup.boost` | 否 | 选择器数组，用于排序（§3.3） |
-| `[[source]]` | 否 | 在线资源源：`kind`、`template`，同一类别按出现顺序回退（§4） |
+| `meta.format`, `meta.version` | yes | `inkdict-source`, `1` |
+| `pack.id` | yes | The dictionary's id: lowercase letters, digits and `-` |
+| `pack.title` | yes | Display name |
+| `pack.edition`, `pack.license` | no | Edition; copyright and terms of use |
+| `languages.source` | yes | Language of headwords and original text (BCP 47) |
+| `languages.targets` | yes | Array of translation languages; `[]` for a monolingual dictionary |
+| `files.types` | yes | Path of the type registry |
+| `files.themes` | yes | Array of theme paths; the first is the default theme |
+| `files.entries` | yes | Path of the entries file |
+| `files.summaries` | no | Path of the summaries file |
+| `files.resources` | no | Path of the resources directory |
+| `lookup.norm` | yes | Lookup key scheme: `fold-1` or `exact-1` (§3.2) |
+| `lookup.boost` | no | Array of selectors used for ranking (§3.3) |
+| `[[source]]` | no | Online resource sources: `kind` and `template`; for one kind they are tried in the order written (§4) |
 
-路径都相对 manifest 所在目录。
+Paths are relative to the directory of the manifest.
 
 ### 1.2 entries.jsonl
 
-UTF-8，每行一个词条，即 `v1.md` §2 的一棵节点树。行以 LF 结束（行尾的 CR 一并去掉，所以 CRLF 也可以），最后一行可以没有 LF；不允许空行。行的顺序就是包内词条编号的顺序。`summaries.jsonl` 的分行规则相同。
+UTF-8, one entry per line: a node tree as in `v1.md` §2. Lines end with LF; a CR just before the LF is removed, so CRLF also works; the last line may lack its LF. Empty lines are not allowed. The order of the lines is the order of entry numbers in the pack. `summaries.jsonl` is split into lines the same way.
 
 ### 1.3 summaries.jsonl
 
-每行一条短释义：
+One summary per line: the short gloss shown under a row of the word list.
 
 ```json
 {"entry": "harbour", "anchor": "safe-harbour", "lang": "zh-Hans", "text": "安全港；免责保护"}
 ```
 
-| 键 | 说明 |
+| Key | Meaning |
 |---|---|
-| `entry` | 词条 key |
-| `anchor` | 可选；词条内的节点 id，不写表示整个词条 |
-| `lang` | 可选；文字的语言，用来选字体；不写时取该词条根节点的 `lang` |
-| `text` | 一行纯文本 |
+| `entry` | The entry key |
+| `anchor` | Optional; the `id` of a node in the entry. Without it, the summary is for the whole entry |
+| `lang` | Optional; the language of the text, used to choose fonts. Defaults to the `lang` of the entry's root |
+| `text` | One line of plain text |
 
-同一个 `(entry, anchor)` 只能有一条。短释义由词典的数据仓库生成，怎么写、用哪种语言都由词典决定。
+There is at most one summary per `(entry, anchor)`. The dictionary decides how summaries are written and in which language.
 
 ### 1.4 resources/
 
-`resources/<类别>/<键>.<扩展名>`，例如 `resources/audio/harbour-gb.wav` 对应资源引用 `audio:harbour-gb`。键是去掉最后一个扩展名的文件名，同一类别内不能重复。媒体类型按扩展名确定：
+`resources/<kind>/<key>.<extension>`; for example `resources/audio/harbour-gb.wav` is the resource `audio:harbour-gb`. The key is the file name without its last extension and is unique within a kind. The media type follows from the extension:
 
-| 扩展名 | 媒体类型 |
+| Extension | Media type |
 |---|---|
 | `mp3` `wav` `ogg` `m4a` | `audio/mpeg` `audio/wav` `audio/ogg` `audio/mp4` |
 | `jpg` `jpeg` `png` `webp` `svg` | `image/jpeg` `image/jpeg` `image/png` `image/webp` `image/svg+xml` |
 
-其他扩展名是构建错误。资源很大的词典可以不放这个目录，只用在线资源源。
+Any other extension stops the build. A dictionary with very large media can leave this directory out and use online sources only.
 
-## 2. 包格式
+## 2. File format
 
-### 2.1 识别
+### 2.1 Identification
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| `PRAGMA application_id` | `0x494E4B44`（ASCII `INKD`） |
+| `PRAGMA application_id` | `0x494E4B44` (ASCII `INKD`) |
 | `PRAGMA user_version` | `1` |
-| `meta.format`、`meta.format_version` | `inkdict-pack`、`1` |
+| `meta.format`, `meta.format_version` | `inkdict-pack`, `1` |
 
-读取端先检查这几项，不符就拒绝打开。
+A reader checks these first and refuses the file when any of them differs.
 
 ### 2.2 meta
 
-| 键 | 值 |
+| Key | Value |
 |---|---|
-| `id`、`title`、`edition`、`license` | 取自 manifest；没有的键不写 |
-| `source_lang`、`target_langs` | `languages.source`；`languages.targets` 的 JSON 数组 |
-| `themes` | 主题名的 JSON 数组，顺序同 manifest，第一个是默认主题 |
-| `norm`、`unicode_version` | 检索键方案；打包时所用 Unicode 表的版本（如 `14.0.0`） |
-| `compression`、`zstd_level`、`zstd_dict` | `zstd`、压缩级别、压缩字典在 `files` 中的名字（没有字典时不写） |
-| `entries`、`resources` | 词条数、包内资源数 |
-| `built_at`、`source_sha256`、`builder` | 构建时间（RFC 3339，UTC）、`entries.jsonl` 的 SHA-256、打包程序名称和版本 |
+| `id`, `title`, `edition`, `license` | From the manifest; keys it lacks are left out |
+| `source_lang`, `target_langs` | `languages.source`; `languages.targets` as a JSON array |
+| `themes` | Theme names as a JSON array, in manifest order; the first is the default |
+| `norm`, `unicode_version` | The lookup key scheme; the version of the Unicode tables used for packing (for example `17.0.0`) |
+| `compression`, `zstd_level`, `zstd_dict` | `zstd`; the compression level; the name in `files` of the compression dictionary (left out when there is none) |
+| `entries`, `resources` | Number of entries; number of files stored in the pack |
+| `built_at`, `source_sha256`, `builder` | Build time (RFC 3339, UTC); SHA-256 of `entries.jsonl`; name and version of the packer |
 
-### 2.3 files 与 entries
+### 2.3 files and entries
 
-`files` 存 `types.toml`、`themes/<名字>.toml` 和压缩字典 `zstd.dict`。读取端只用包内的这些文件，不依赖源目录或 `spec/`。
+`files` holds `types.toml`, `themes/<name>.toml` and the compression dictionary `zstd.dict`. Readers use only these copies, never the source directory or `spec/`.
 
-`entries` 的列：
+The columns of `entries`:
 
-| 列 | 值 |
+| Column | Value |
 |---|---|
-| `id` | 按 `entries.jsonl` 的行序从 1 编号，只在本包内有效 |
-| `key` | 根节点的 `id`。交叉引用、深链、历史记录都用它 |
-| `headword` | 锚点为 0 的第一个 `headword` 种类索引节点的全部文字，去掉排版标记、合并空白（§3.1）；没有时取任意位置的第一个；都没有时取 `key` |
-| `homograph` | 锚点为 0 的第一个 `homograph` 角色节点的文字，按十进制整数解析；没有时为 NULL |
-| `body` | 节点树的紧凑 JSON（UTF-8），经 zstd 压缩；有 `zstd_dict` 时用该字典 |
+| `id` | Numbered from 1 in the order of `entries.jsonl`; meaningful only inside this pack |
+| `key` | The root's `id`. Cross-references, deep links and history use it |
+| `headword` | The text of the first `headword`-kind index node at anchor 0, with layout marks removed and white space collapsed (§3.1); else the first anywhere in the entry; else `key` |
+| `homograph` | The text of the first `homograph`-role node at anchor 0 when it is a positive decimal integer (the digits of any script); otherwise NULL |
+| `body` | The node tree as compact JSON (UTF-8), compressed with zstd, using `zstd_dict` when present |
 
-## 3. 词形索引 lookup
+## 3. Form index: `lookup`
 
-### 3.1 哪些节点进索引
+### 3.1 What is indexed
 
-类型表里带 `index` 角色的每个节点生成一行或几行：
+Every node whose type has the `index` role gives one or more rows:
 
-| 列 | 值 |
+| Column | Value |
 |---|---|
-| `norm` | 检索键（§3.2） |
-| `form` | 显示形式 |
+| `norm` | The lookup key (§3.2) |
+| `form` | The form as displayed |
 | `entry` | `entries.id` |
-| `anchor` | 节点自身或最近的、带 `id` 的祖先节点的锚点编号（§3.4） |
-| `kind` | 该类型在类型表里的 `index` 种类（`v1.md` §3.1） |
-| `rank` | 排序值，越小越靠前（§3.3） |
+| `anchor` | Anchor number (§3.4) of the node itself or of its nearest ancestor that has an `id` |
+| `kind` | The type's index kind (`v1.md` §3.1) |
+| `rank` | Sort value; lower comes first (§3.3) |
 
-一个节点的**读法**按它的子节点展开，最多 32 种，超出的按顺序截掉并写入报告：
+A node's **readings** are expanded from its children, at most 32; readings beyond that are dropped in order and reported:
 
-- 字符串：原样拼接；其中每对 `(…)` 可有可无（`by your (own) bootstraps` → 有无 `own` 两种）；
-- 带 `optional` 角色的子节点：可有可无（`the lower middle classes` → 有无 `the` 两种）；
-- 连续的、带 `choice` 角色的子节点（中间只隔着空白字符串）：每种读法取其一（`pull` `drag` → 两种）；
-- 其他子节点：取它自己的读法拼接。
+- a string is taken as it is, except that each `(…)` in it may be left out (`by your (own) bootstraps` gives readings with and without `own`);
+- a child with the `optional` role may be left out (`the lower middle classes` gives readings with and without `the`);
+- a run of children with the `choice` role, separated at most by white-space strings, gives one reading per child (`pull`, `drag` give two);
+- any other child contributes its own readings.
 
-每种读法去掉排版标记 `ˈ` `ˌ` `·` `‧` `↔`（U+02C8、U+02CC、U+00B7、U+2027、U+2194），合并连续空白并去掉首尾空白，就是 `form`。`norm` 为空的读法不进索引。同一词条内 `(norm, anchor)` 只留一行，取 `rank` 最小的。
+Each reading, with the layout marks `ˈ` `ˌ` `·` `‧` `↔` (U+02C8, U+02CC, U+00B7, U+2027, U+2194) removed, white space collapsed and trimmed, is a `form`. Readings whose `norm` is empty are not indexed. Within an entry only one row is kept per `(norm, anchor)`: the one with the lowest `rank`.
 
-### 3.2 检索键
+### 3.2 Lookup keys
 
-查询和打包使用同一个方案，记录在 `meta.norm`。两个方案的步骤：
+Packing and lookup use the same scheme, recorded in `meta.norm`. The two schemes:
 
-| 步 | `fold-1` | `exact-1` |
+| Step | `fold-1` | `exact-1` |
 |---|---|---|
-| 1 | 去掉 §3.1 的排版标记 | 同左 |
+| 1 | Remove the layout marks of §3.1 | Same |
 | 2 | NFKD | NFKC |
-| 3 | 去掉基字符属于拉丁、希腊、西里尔、希伯来、阿拉伯字母的组合附加符（下文） | — |
+| 3 | Remove combining marks whose base letter is Latin, Greek, Cyrillic, Hebrew or Arabic (below) | — |
 | 4 | NFC | — |
-| 5 | Unicode 完全大小写折叠（casefold） | 同左 |
-| 6 | 只保留一般类别为 L、M、N 的字符；结果为空时，改为保留第 5 步结果中除空白以外的全部字符 | 同左 |
+| 5 | Unicode full case folding | Same |
+| 6 | Keep only characters of general category L, M or N; when that leaves nothing, keep every non-white-space character of step 5's result instead | Same |
 
-第 3 步：一般类别为 Mn 的字符，它的基字符是前面最近的非 Mn 字符；基字符落在以下范围内（或没有基字符）时去掉：
+Step 3: the base of a character of general category Mn is the nearest preceding character that is not Mn. The Mn character is removed when its base lies in one of these ranges, or when it has no base:
 
-| 文字 | 范围 |
+| Script | Ranges |
 |---|---|
-| 拉丁 | U+0000–024F、1E00–1EFF、2C60–2C7F、A720–A7FF、AB30–AB6F |
-| 希腊 | U+0370–03FF、1F00–1FFF |
-| 西里尔 | U+0400–052F、1C80–1C8F、2DE0–2DFF、A640–A69F |
-| 希伯来 | U+0590–05FF、FB1D–FB4F |
-| 阿拉伯 | U+0600–06FF、0750–077F、0870–08FF、FB50–FDFF、FE70–FEFF |
+| Latin | U+0000–024F, 1E00–1EFF, 2C60–2C7F, A720–A7FF, AB30–AB6F |
+| Greek | U+0370–03FF, 1F00–1FFF |
+| Cyrillic | U+0400–052F, 1C80–1C8F, 2DE0–2DFF, A640–A69F |
+| Hebrew | U+0590–05FF, FB1D–FB4F |
+| Arabic | U+0600–06FF, 0750–077F, 0870–08FF, FB50–FDFF, FE70–FEFF |
 
-于是 `fold-1` 下 `Café` = `cafe`、`mother-in-law` = `mother in law`、`كِتَاب` = `كتاب`，而印地语 `किताब`、日语 `が` 保持原样。词头本身就带附加符、不能去掉的语言用 `exact-1`。
+So under `fold-1`, `Café` = `cafe`, `mother-in-law` = `mother in law` and `كِتَاب` = `كتاب`, while Hindi `किताब` and Japanese `が` keep their marks. Languages whose headwords carry marks that must not be removed use `exact-1`.
 
-Unicode 表的版本会影响结果。读取端可以用更新的表：在 `meta.unicode_version` 中已分配的字符，结果必须与打包时相同；之后才分配的字符，结果不作规定。
+The Unicode version affects the result. A reader may use newer tables: for characters assigned in `meta.unicode_version` the result must be the same as at packing time; for characters assigned later it is not specified.
 
-### 3.3 排序
+### 3.3 Ranking
 
 ```text
 rank = class × (B + 1) + importance
 ```
 
-| class | 行 |
+| class | Rows |
 |---|---|
-| 0 | `headword`，锚点为 0 |
-| 1 | `headword`，其他锚点（派生词、词性分组里的词头等） |
+| 0 | `headword` at anchor 0 |
+| 1 | `headword` at any other anchor (derived words, headwords inside a part-of-speech group…) |
 | 2 | `variant` |
 | 3 | `phrase` |
 | 4 | `inflection` |
 | 5 | `reading` |
 | 6 | `hidden` |
 
-`B` 是 `lookup.boost` 的长度。`importance` 是词条内任意节点能匹配的第一个 boost 选择器的下标（从 0 起）；都不匹配时为 `B`。选择器写法同 `v1.md` §4.1，不含 `::` 伪元素。例：Oxford 写 `boost = ["badge[scheme=ox3000]", "badge[scheme=ox5000]"]`。
+`B` is the length of `lookup.boost`. `importance` is the index (from 0) of the first boost selector that matches any node of the entry, or `B` when none does. Selectors are written as in `v1.md` §4.1, without `::` pseudo-elements. Example: `boost = ["badge[scheme=core]"]` ranks entries with a core-vocabulary badge first.
 
-### 3.4 锚点编号
+### 3.4 Anchor numbers
 
-词条内所有带 `id` 的节点按先序遍历编号，根节点为 0。编号只在本包内有效，对外的深链用 `<词条 key>#<节点 id>`。
+All nodes of an entry that have an `id` are numbered in document order (pre-order); the root is 0. The numbers are meaningful only inside the pack; links from outside use `<entry key>#<node id>`.
 
-## 4. 资源
+## 4. Resources
 
-资源引用 `类别:键`（`v1.md` §7）按顺序解析：
+A resource reference `kind:key` (`v1.md` §7) is resolved in order:
 
-1. `resources` 表中 `(kind, key)` 存在：用它的 `body` 和 `mime`。
-2. 否则按 `resource_sources` 中该类别的模板，`priority` 从 1 起依次尝试。模板中 `{key}` 原样代入，`{key:uri}` 按 `encodeURIComponent` 编码后代入。
+1. The row `(kind, key)` of the `resources` table, when present: its `body` and `mime`.
+2. Otherwise the templates of that kind in `resource_sources`, by `priority` from 1. In a template, `{key}` is replaced by the key as it is and `{key:uri}` by the key encoded as `encodeURIComponent` does.
 
-`resource_sources` 来自 manifest 的 `[[source]]`，`priority` 为同一类别内的出现顺序。读取端可以缓存在线取到的资源。
+`resource_sources` comes from the manifest's `[[source]]` tables; `priority` is the order within a kind. Readers may cache what they fetch.
 
-## 5. 词表（读取端）
+## 5. The word list (readers)
 
-输入 `q`，检索键 `k = norm(q)`。`k` 为空时不显示词表。
+For the input `q`, the key is `k = norm(q)`. When `k` is empty, no list is shown.
 
-### 5.1 三组结果
+### 5.1 Three groups
 
-| 组 | 何时出现 | 匹配 | 顺序 |
+| Group | When | Matches | Order |
 |---|---|---|---|
-| 前缀 | 总是 | `norm` 以 `k` 开头 | `norm = k` 的在前，再按 `length(norm)`、`rank`、`entry` |
-| 含有 | `k` 至少 2 个字符 | `norm` 在第 2 个字符或之后含有 `k`；只取 `headword`、`variant`、`phrase` | `rank`、`length(norm)`、`norm`、`entry` |
-| 拼写接近 | 前两组都为空，且 `k` 至少 3 个字符 | 与 `k` 的编辑距离（OSA，相邻两个字符对调算 1 处）不超过上限：`k` 为 3–4 个字符时 1，5 个起 2 | 按检索键：距离、字母差异、该键最小的 `rank`、与 `k` 的长度差、键本身；同一个键的行按 `rank`、`entry` |
+| Prefix | Always | `norm` starts with `k` | `norm = k` first, then `length(norm)`, `rank`, `entry` |
+| Contains | `k` has at least 2 characters | `norm` contains `k` starting at its 2nd character or later; only `headword`, `variant` and `phrase` rows | `rank`, `length(norm)`, `norm`, `entry` |
+| Close spellings | Both groups above are empty and `k` has at least 3 characters | Edit distance to `k` (optimal string alignment: swapping two adjacent characters counts once) at most 1 for 3–4 characters, at most 2 from 5 characters | By key: distance, letter difference, the key's lowest `rank`, length difference to `k`, the key itself; rows of one key by `rank`, `entry` |
 
-字母差异是两个键的字符多重集合之差的大小：相邻对调为 0，所以 `harbuor` 的候选里 `harbour` 排在替换一个字母的候选前面。
+The letter difference is the size of the difference between the two keys' character multisets: a swap of adjacent letters counts 0, so for `harbuor` the candidate `harbour` comes before candidates that replace a letter.
 
-前缀组走 `lookup` 主键的范围扫描（`norm >= k AND norm < k || char(0x10FFFF)`）。另外两组可以在内存中对 `lookup.norm` 计算。每组显示多少行由软件决定。
+The prefix group is a range scan of the `lookup` primary key (`norm >= k AND norm < k || char(0x10FFFF)`). The other two groups may be computed in memory over `lookup.norm`. How many rows each group shows is up to the application.
 
-### 5.2 一行一个词条
+### 5.2 One row per entry
 
-`lookup` 的行先合并成词表的行，再显示。
+`lookup` rows are merged into word-list rows before they are shown.
 
-- **合并**：显示形式与词条都相同的行合并为一行。显示形式是 `form`；`reading` 和 `hidden` 的显示形式是该词条的 `headword`，所以它们并入词头那一行。
-- **代表行**：合并后的行用其中 `rank` 最小的那一行；它在列表中的位置取其中最靠前的一行。
-- **不跨组重复**：出现在前面一组的行，后面的组不再列出。去重按各组的完整结果计算，之后才按软件的行数上限截断，所以显示多少行不影响哪些行出现在哪一组。
-- **不同词条一定分行**：同形词 `lead¹`、`lead²`，以及 `left`（词头）和 `left`（`leave` 的屈折形式）都各占一行。选中一行，只打开一个词条。
+- **Merging**: rows with the same displayed form and the same entry become one row. The displayed form is `form`, except for `reading` and `hidden` rows, whose displayed form is the entry's `headword`; they therefore merge into the headword's row.
+- **Representative**: a merged row uses its member with the lowest `rank`; its position in the list is that of its earliest member.
+- **No repeats across groups**: a row in an earlier group is not listed again in a later one. This is decided on each group's complete result, before the application's row limit is applied, so the limit never changes which group a row appears in.
+- **Different entries never merge**: the homographs `lead¹` and `lead²`, or `left` (headword) and `left` (an inflection of `leave`), are separate rows. Choosing a row opens exactly one entry.
 
-每行显示：
+Each row shows:
 
-| 代表行的种类 | 显示 |
+| Kind of the representative | Shown as |
 |---|---|
-| `headword`、`phrase` | 显示形式；有 `homograph` 时在后面标出编号 |
-| `variant`、`inflection` | 显示形式 → 所属词条的 `headword`（两者相同时不写箭头） |
-| `reading`、`hidden` | 词条的 `headword`；代表行是 `reading` 时后面接匹配到的读法（检索键相同的读法在打包时已只留一行，如 `hǎo`、`hào`） |
+| `headword`, `phrase` | The displayed form, with the homograph number after it when there is one |
+| `variant`, `inflection` | The displayed form → the entry's `headword` (no arrow when they are the same) |
+| `reading`, `hidden` | The entry's `headword`; for `reading`, followed by the matched reading (readings with the same key were already reduced to one row at packing time, e.g. `hǎo` and `hào`) |
 
-下面一行是短释义：先找 `summaries` 中代表行的 `(entry, anchor)`。没有时，`variant`、`inflection`、`reading`、`hidden` 行和锚点为 0 的行用 `(entry, 0)`（它们与词头是同一个词）；嵌套词头和 `phrase` 是另一个词，不用整个词条的短释义，就不显示。
+Below it is the summary: the `summaries` row for the representative's `(entry, anchor)`. Without one, `variant`, `inflection`, `reading` and `hidden` rows, and rows at anchor 0, use `(entry, 0)`, because they are the same word as the headword. Nested headwords and `phrase` rows are different words, so they do not borrow the entry's summary and show none.
 
-### 5.3 打开
+### 5.3 Opening a row
 
-选中一行：打开代表行的词条，定位到代表行的锚点；锚点在某个标签页内时，显示那个标签页（`v1.md` §4.4）。
+Choosing a row opens the representative's entry at the representative's anchor; when that anchor lies inside a tab, that tab is shown (`v1.md` §4.4).
 
-## 6. 构建检查
+## 6. Build checks
 
-下列问题使构建失败：manifest、类型表或主题不合法；某行不是合法的 JSON；根节点缺 `id` 或 `lang`；词条 key 重复；资源文件扩展名不认识或键重复。
+These stop the build: an invalid manifest, type registry or theme; a line that is not valid JSON; a root without `id` or `lang`; a duplicate entry key; a resource file with an unknown extension or a duplicate key.
 
-下列问题写入构建报告，不中断构建：
+These are listed in the build report without stopping the build:
 
-- 类型表里没有的类型、类型表不允许的子节点、未声明或类型不符的属性；
-- 同一词条内节点 `id` 重复；
-- `link` 节点的 `entry` 不在包内，或 `anchor` 不在目标词条内（读取端按 `v1.md` §6 回退）；
-- 资源引用既不在 `resources` 中，该类别也没有在线资源源；
-- 短释义指向不存在的词条或锚点，或同一位置有多条；
-- `homograph` 节点的文字不是正整数；
-- 读法超过 32 种；`index` 节点的读法全部为空。
-
-## 7. 与 v0 的差别
-
-| v0 | v1 |
-|---|---|
-| 源目录不作规定 | §1 规定源目录 |
-| `lookup.kind` 是类型名 | 是索引种类 |
-| 排序用 Oxford 的类别表和 `priority_badges` | 按索引种类和 `boost` 选择器 |
-| 检索键去掉所有组合附加符 | `fold-1` / `exact-1`，记录 `unicode_version` |
-| 有 `fts` 全文检索表 | 去掉 |
-| 资源只用在线模板 | 可打进 `resources` 表 |
-| 没有短释义 | `summaries` 表 |
+- types missing from the registry, children the registry does not allow, attributes that are undeclared or of the wrong type;
+- a node `id` used twice in one entry;
+- a `link` node whose `entry` is not in the pack, or whose `anchor` is not in the target entry (readers fall back as in `v1.md` §6);
+- a resource reference that is neither stored in the pack nor covered by an online source of its kind;
+- a summary for a missing entry or anchor, or two summaries for one place;
+- a `homograph` node whose text is not a positive integer;
+- more than 32 readings; an `index` node all of whose readings are empty.

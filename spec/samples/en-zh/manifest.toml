@@ -1,5 +1,5 @@
-# 打包清单：一部词典的源目录从这里开始读（spec/pack-v1.md）。
-# 路径都相对本文件。本示例的词条内容为虚构。
+# The manifest: reading a dictionary's source directory starts here
+# (spec/pack-v1.md). Paths are relative to this file. The entries are invented.
 
 [meta]
 format = "inkdict-source"
@@ -12,22 +12,22 @@ edition = "1"
 license = "CC0-1.0"
 
 [languages]
-source = "en"            # 词头和原文的语言（BCP 47）
-targets = ["zh-Hans"]    # 译文的语言；单语词典写 []
+source = "en"            # language of headwords and original text (BCP 47)
+targets = ["zh-Hans"]    # translation languages; [] for a monolingual dictionary
 
 [files]
 types = "types.toml"
-themes = ["themes/default.toml"]   # 第一个是默认主题
-entries = "entries.jsonl"          # 每行一个词条（一棵节点树）
-summaries = "summaries.jsonl"      # 可选
-resources = "resources"            # 可选：resources/<类别>/<键>.<扩展名>，打进包里
+themes = ["themes/default.toml"]   # the first is the default theme
+entries = "entries.jsonl"          # one entry (node tree) per line
+summaries = "summaries.jsonl"      # optional
+resources = "resources"            # optional: resources/<kind>/<key>.<ext>, stored in the pack
 
 [lookup]
 norm = "fold-1"
-# 同等匹配时，含有匹配这些选择器的节点的词条排在前面，按列表顺序。
+# Between equal matches, entries with a node matching these selectors come first, in list order.
 boost = ["badge[scheme=core]"]
 
-# 包里没有的资源，到这里在线取（可选，按顺序回退）。
+# Files not stored in the pack are fetched from here (optional; tried in order).
 [[source]]
 kind = "audio"
 template = "https://media.example.org/sample-en-zh/audio/{key:uri}.mp3"
