@@ -51,7 +51,7 @@ fn builds_and_saves_full_report_without_pack_argument() {
     assert!(
         String::from_utf8(output.stdout)
             .unwrap()
-            .contains("3 entries, 13 lookup rows, 5 summaries")
+            .contains("6 entries, 23 lookup rows, 10 summaries")
     );
     let report: Value = serde_json::from_slice(&fs::read(report).unwrap()).unwrap();
     assert_eq!(report["resources"], 4);

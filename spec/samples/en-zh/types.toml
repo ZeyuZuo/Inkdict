@@ -7,7 +7,7 @@ version = 1
 
 [groups]
 inline = ["#text", "strong", "target", "translation"]
-head = ["headword", "badge", "variant", "pron_list", "pos", "inflections"]
+head = ["headword", "homograph", "badge", "variant", "pron_list", "pos", "inflections", "form_index"]
 
 [types.entry]
 kind = "block"
@@ -23,6 +23,19 @@ kind = "inline"
 children = ["#text"]
 roles = ["index"]
 index = "headword"
+
+[types.homograph]
+kind = "inline"
+doc = "同形词编号：拼写相同的几个词条各自的序号"
+children = ["#text"]
+roles = ["homograph"]
+
+[types.form_index]
+kind = "inline"
+doc = "只用于检索、不显示的词形"
+children = ["#text"]
+roles = ["index"]
+index = "hidden"
 
 [types.badge]
 kind = "inline"
@@ -109,9 +122,21 @@ roles = ["anchor"]
 
 [types.phrase]
 kind = "inline"
-children = ["#text"]
+children = ["#text", "alt", "opt"]
 roles = ["index"]
 index = "phrase"
+
+[types.alt]
+kind = "inline"
+doc = "相邻的几个 alt 任选其一，各自进索引"
+children = ["#text"]
+roles = ["choice"]
+
+[types.opt]
+kind = "inline"
+doc = "可有可无的部分，有和没有都进索引"
+children = ["#text"]
+roles = ["optional"]
 
 [types.xref]
 kind = "block"

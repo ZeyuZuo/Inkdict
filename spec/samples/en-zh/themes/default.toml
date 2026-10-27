@@ -39,6 +39,14 @@ color = "fg"
 size = 2.3
 weight = "bold"
 
+[style.homograph]
+baseline = "super"
+size = 0.5
+color = "muted"
+
+[style.form_index]
+display = "none"
+
 [style.badge]
 font = "ui"
 size = 0.65
@@ -141,6 +149,14 @@ color = "muted"
 [style.phrase]
 display = "block"
 weight = "bold"
+
+[style.alt]
+join = " / "
+
+[style.opt]
+before = "("
+after = ")"
+style = "italic"
 
 [style.xref]
 space_before = 0.6

@@ -13,7 +13,7 @@ fn sample_words_and_raw_entry_bodies_round_trip() {
     let report = inkdict_pack::build(options).unwrap();
     assert_eq!(
         (report.entries, report.lookup_rows, report.resources),
-        (3, 13, 4)
+        (6, 23, 4)
     );
     assert_eq!(report.problems.0.len(), 0);
     let pack = Pack::open(&report.output).unwrap();
