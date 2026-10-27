@@ -66,6 +66,9 @@ after = ")"
 color = "muted"
 style = "italic"
 
+[style.variant_form]
+before = " "
+
 [style.pron_list]
 display = "block"
 space_before = 0.3
