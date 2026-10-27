@@ -11,7 +11,7 @@ use std::path::Path;
 
 use inkdict_core::theme::{Theme, ThemeStack};
 use inkdict_core::{Error as CoreError, Focus, Link, LinkTarget, Pack, Registry, Word};
-use inkdict_html::{Markup, entry_html, theme_css};
+use inkdict_html::{Markup, entry_html_with_resources, theme_css};
 use serde::Serialize;
 
 pub use config::Config;
@@ -112,6 +112,8 @@ pub struct Dictionary {
     base: Theme,
     settings: Settings,
     stack: ThemeStack,
+    /// Where the host serves packs' own files (see [`Session::set_resource_base`]).
+    resource_base: Option<String>,
 }
 
 impl Dictionary {
@@ -127,7 +129,25 @@ impl Dictionary {
             base,
             settings,
             stack,
+            resource_base: None,
         })
+    }
+
+    pub(crate) fn set_resource_base(&mut self, base: Option<String>) {
+        self.resource_base = base;
+    }
+
+    /// A file the pack stores itself, for the host's resource URL
+    /// `<base><pack id>/<kind>/<key>`: `path` is the part after `<base>`.
+    /// None when the pack id is not this pack's or the file is absent.
+    pub fn resource(&self, path: &str) -> Option<(String, Vec<u8>)> {
+        let mut parts = path.trim_start_matches('/').splitn(3, '/');
+        let (id, kind, key) = (parts.next()?, parts.next()?, parts.next()?);
+        if id != self.pack.meta().id() {
+            return None;
+        }
+        let key = percent_decode(key)?;
+        self.pack.resource(&format!("{kind}:{key}")).ok().flatten()
     }
 
     /// Read the word index now rather than on the first lookup.
@@ -166,8 +186,12 @@ impl Dictionary {
             .pack
             .renderer(&self.registry, &self.stack)
             .render(&entry);
+        let resources = self
+            .resource_base
+            .as_ref()
+            .map(|base| format!("{base}{}/", self.pack.meta().id()));
         Ok(EntryView {
-            html: entry_html(&tree, Markup::App),
+            html: entry_html_with_resources(&tree, Markup::App, resources.as_deref()),
             key: entry.key,
             headword: entry.headword,
             homograph: entry.homograph,
@@ -208,3 +232,21 @@ impl Dictionary {
 
 #[cfg(test)]
 mod tests;
+
+/// Undo `encodeURIComponent` on a URL path segment.
+fn percent_decode(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}

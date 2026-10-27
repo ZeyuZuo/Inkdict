@@ -340,6 +340,34 @@ fn sample_embedded_resources_and_online_audio_fallback() {
     );
 }
 
+#[test]
+fn sample_render_marks_media_the_pack_stores() {
+    let pack = pack();
+    assert!(pack.has_resource("audio:harbour-gb"));
+    assert!(!pack.has_resource("audio:harbour-us"));
+    assert!(!pack.has_resource("not a reference"));
+    let registry = pack.registry().unwrap();
+    let stack = ThemeStack::new(pack.theme("default").unwrap());
+    let renderer = pack.renderer(&registry, &stack);
+    let harbour = renderer.render(&pack.entry("harbour").unwrap());
+    let audio: Vec<_> = nodes(&harbour)
+        .into_iter()
+        .filter_map(|n| n.audio.as_ref())
+        .map(|a| (a.embedded.as_deref(), a.urls.len()))
+        .collect();
+    assert_eq!(audio, [(Some("audio:harbour-gb"), 1), (None, 1)]);
+    let lantern = renderer.render(&pack.entry("lantern").unwrap());
+    let image = nodes(&lantern)
+        .into_iter()
+        .find_map(|n| n.image.as_ref())
+        .unwrap();
+    assert_eq!(image.embedded.as_deref(), Some("image:lantern"));
+    assert!(
+        image.urls.is_empty(),
+        "the sample has no online image source"
+    );
+}
+
 fn nodes(root: &RenderNode) -> Vec<&RenderNode> {
     let mut found = vec![root];
     for child in &root.children {

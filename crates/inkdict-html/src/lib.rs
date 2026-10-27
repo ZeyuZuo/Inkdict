@@ -8,4 +8,4 @@ mod css;
 mod markup;
 
 pub use css::theme_css;
-pub use markup::{Markup, html as entry_html};
+pub use markup::{Markup, html as entry_html, html_with_resources as entry_html_with_resources};

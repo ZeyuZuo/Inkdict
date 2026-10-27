@@ -37,6 +37,7 @@ Tauri 2。查词由 Tauri 的 Rust 部分（`src-tauri/`）直接调用 `inkdict
 - 标签页（`spec/v1.md` §4.4）是 `<div class="dx-tabs">`：先是 `<div class="dx-tab-bar" role="tablist">` 里每页一个 `<button class="dx-tab" role="tab" aria-selected>`，再是每页一个 `<div class="dx-tab-panel" role="tabpanel">`，未选中的带 `hidden`；要打开的锚点在某一页内时，界面切到那一页；
 - 词族节点的 class 是 `dx-word_family`；
 - 发音按钮是 `<button class="dx-icon" data-audio="<url> <url>…">`，按顺序回退；
+- 包里自带的音频和图片排在最前，网址是 `inkdict-res://localhost/<包 id>/<类别>/<键>`（Windows 上是 `http://inkdict-res.localhost/…`），由 Tauri 的自定义协议从当前词典读出；`inkdict serve` 用 `http://127.0.0.1:<端口>/resource/…` 提供同样的文件；
 - 图片是 `<img src="<首选>" data-fallback="<url>…">`；
 - 链接是 `<a href="#" class="dx-link" data-link="<link 的 JSON，HTML 转义>">`，点击后取 `dataset.link` 解析成 JSON 交给 `follow`（并阻止默认跳转）。
 

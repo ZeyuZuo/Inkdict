@@ -11,6 +11,14 @@ use std::sync::{Arc, RwLock};
 
 use inkdict_app::Session;
 use tauri::Manager;
+use tauri::http::{Response, StatusCode, header::CONTENT_TYPE};
+
+/// Where the WebView fetches files a pack stores itself (the `inkdict-res`
+/// protocol below); Windows and Android serve custom schemes over http.
+#[cfg(any(windows, target_os = "android"))]
+const RESOURCE_BASE: &str = "http://inkdict-res.localhost/";
+#[cfg(not(any(windows, target_os = "android")))]
+const RESOURCE_BASE: &str = "inkdict-res://localhost/";
 
 /// Shared by every command: configuration, library, and the open dictionary.
 pub struct AppState {
@@ -52,7 +60,8 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("config.json");
-            let (session, error) = Session::start(Some(config_path), pack_path());
+            let (mut session, error) = Session::start(Some(config_path), pack_path());
+            session.set_resource_base(RESOURCE_BASE);
             if let Some(error) = error {
                 eprintln!("inkdict: {error}");
             }
@@ -62,6 +71,22 @@ fn main() {
             state.warm_up();
             app.manage(state);
             Ok(())
+        })
+        .register_uri_scheme_protocol("inkdict-res", |ctx, request| {
+            let state = ctx.app_handle().state::<AppState>();
+            let found = state
+                .session
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .dictionary()
+                .and_then(|dictionary| dictionary.resource(request.uri().path()));
+            match found {
+                Some((mime, body)) => Response::builder().header(CONTENT_TYPE, mime).body(body),
+                None => Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Vec::new()),
+            }
+            .expect("static response parts")
         })
         .invoke_handler(tauri::generate_handler![
             commands::pack_info,

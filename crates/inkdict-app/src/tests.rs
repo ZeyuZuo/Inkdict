@@ -345,3 +345,38 @@ fn sample_settings_hide_pronunciation_and_examples_independently() {
     assert_eq!(dictionary.entry("harbour").unwrap(), original);
     assert!(dictionary.theme_css().contains("--c-fg:#1b1c1f"));
 }
+
+#[test]
+fn sample_resources_are_served_by_path_and_tried_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut session, error) =
+        Session::start(Some(dir.path().join("config.json")), Some(sample_pack()));
+    assert!(error.is_none());
+    session.set_resource_base("inkdict-res://localhost/");
+    let dictionary = session.dictionary().unwrap();
+    let html = dictionary.entry("lantern").unwrap().html;
+    assert!(html.contains("src=\"inkdict-res://localhost/sample-en-zh/image/lantern\""));
+    let (mime, body) = dictionary.resource("/sample-en-zh/image/lantern").unwrap();
+    assert_eq!(mime, "image/svg+xml");
+    assert!(body.starts_with(b"<svg") || body.starts_with(b"<?xml"));
+    assert_eq!(
+        dictionary
+            .resource("sample-en-zh/audio/harbour-gb")
+            .unwrap()
+            .0,
+        "audio/wav"
+    );
+    assert!(dictionary.resource("other-pack/image/lantern").is_none());
+    assert!(
+        dictionary
+            .resource("sample-en-zh/audio/harbour-us")
+            .is_none()
+    );
+    assert!(
+        dictionary
+            .resource("sample-en-zh/image/lan%74ern")
+            .is_some()
+    );
+    assert!(dictionary.resource("sample-en-zh/image/%zz").is_none());
+    assert!(dictionary.resource("sample-en-zh/image").is_none());
+}

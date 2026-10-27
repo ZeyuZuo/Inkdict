@@ -7,7 +7,9 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use inkdict_core::theme::Style;
-use inkdict_core::{Generated, Icon, RenderChild, RenderNode, Tab, TextStyle};
+use inkdict_core::{
+    Generated, Icon, RenderChild, RenderNode, Tab, TextStyle, encode_uri_component,
+};
 
 /// Which attributes links, audio, images and anchors carry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,12 +166,27 @@ pub(crate) fn svg(name: &str) -> String {
 /// Prints one tree. In `App` markup, styles become classes named after a
 /// hash of their CSS, collected into one `<style>` block (inline styles
 /// repeated on every node made the entry `go` 744 KB).
-struct Writer {
+struct Writer<'a> {
     markup: Markup,
+    /// App markup: where the host serves the pack's own files, e.g.
+    /// `inkdict-res://localhost/<pack id>/`; `<kind>/<key>` is appended.
+    resources: Option<&'a str>,
     classes: RefCell<BTreeMap<String, String>>,
 }
 
-impl Writer {
+impl Writer<'_> {
+    /// Audio or image URLs: the pack's own copy first (App markup with a
+    /// resource base), then the online sources.
+    fn media_urls(&self, urls: &[String], embedded: Option<&str>) -> Vec<String> {
+        let own = match (self.markup, self.resources, embedded) {
+            (Markup::App, Some(base), Some(reference)) => reference
+                .split_once(':')
+                .map(|(kind, key)| format!("{base}{kind}/{}", encode_uri_component(key))),
+            _ => None,
+        };
+        own.into_iter().chain(urls.iter().cloned()).collect()
+    }
+
     /// ` class="…"{extra} style="…"`, or ` class="… zs…"{extra}` in App markup.
     fn attrs(&self, class: &str, extra: &str, css: &str) -> String {
         if self.markup == Markup::Preview {
@@ -342,9 +359,10 @@ impl Writer {
         }
         let mut body = self.children(node);
         if let Some(audio) = &node.audio {
+            let urls = self.media_urls(&audio.urls, audio.embedded.as_deref());
             let url = match markup {
-                Markup::Preview => audio.urls.first().cloned().unwrap_or_default(),
-                Markup::App => audio.urls.join(" "),
+                Markup::Preview => urls.first().cloned().unwrap_or_default(),
+                Markup::App => urls.join(" "),
             };
             let region = audio.region.as_deref().unwrap_or_default();
             let mut extra = format!(" data-audio=\"{}\"", escape(&url));
@@ -354,10 +372,11 @@ impl Writer {
             body.push_str(&self.icon(&audio.icon, "button", &extra));
         }
         if let Some(image) = &node.image {
-            let url = image.urls.first().map(String::as_str).unwrap_or_default();
+            let urls = self.media_urls(&image.urls, image.embedded.as_deref());
+            let url = urls.first().map(String::as_str).unwrap_or_default();
             let fallback = match markup {
-                Markup::App if image.urls.len() > 1 => {
-                    format!(" data-fallback=\"{}\"", escape(&image.urls[1..].join(" ")))
+                Markup::App if urls.len() > 1 => {
+                    format!(" data-fallback=\"{}\"", escape(&urls[1..].join(" ")))
                 }
                 _ => String::new(),
             };
@@ -430,8 +449,15 @@ fn style_class(css: &str) -> String {
 /// HTML of a rendered node and its descendants; in `App` markup the
 /// entry's `<style>` block comes first.
 pub fn html(node: &RenderNode, markup: Markup) -> String {
+    html_with_resources(node, markup, None)
+}
+
+/// As [`html`]; in `App` markup, audio and images the pack stores itself
+/// are tried first at `<resources><kind>/<key>` (the key URI-encoded).
+pub fn html_with_resources(node: &RenderNode, markup: Markup, resources: Option<&str>) -> String {
     let writer = Writer {
         markup,
+        resources,
         classes: RefCell::new(BTreeMap::new()),
     };
     let body = writer.node(node);
@@ -474,6 +500,7 @@ mod tests {
         let mut pron = node("pron", Vec::new());
         pron.audio = Some(inkdict_core::Audio {
             urls: vec!["a.mp3".into(), "b.mp3".into()],
+            embedded: None,
             icon: inkdict_core::Icon {
                 name: "speaker".into(),
                 style: Style::default(),
@@ -487,6 +514,7 @@ mod tests {
         let mut picture = node("image", Vec::new());
         picture.image = Some(Image {
             urls: vec!["a.jpg".into(), "b.jpg".into()],
+            embedded: None,
         });
         assert!(html(&picture, Markup::App).contains("src=\"a.jpg\" data-fallback=\"b.jpg\""));
     }

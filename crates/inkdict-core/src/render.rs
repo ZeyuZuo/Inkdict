@@ -135,8 +135,12 @@ pub struct Icon {
 /// A play control.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Audio {
-    /// Candidate URLs, best first.
+    /// Online candidate URLs, best first.
     pub urls: Vec<String>,
+    /// The reference (`kind:key`) when the pack stores the file itself;
+    /// the app serves it and tries it before `urls`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedded: Option<String>,
     pub icon: Icon,
     /// The node's `region` attribute, e.g. `GB`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -146,6 +150,9 @@ pub struct Audio {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Image {
     pub urls: Vec<String>,
+    /// As for [`Audio::embedded`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedded: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -357,6 +364,7 @@ impl<'a> Renderer<'a> {
             let name = style.str("icon").unwrap_or("speaker").to_owned();
             rendered.audio = Some(Audio {
                 urls: self.pack.resource_urls(reference),
+                embedded: self.embedded(reference),
                 icon: self.icon(&path, &text, name),
                 region: attrs.get("region").map(python_str),
             });
@@ -366,6 +374,7 @@ impl<'a> Renderer<'a> {
         {
             rendered.image = Some(Image {
                 urls: self.pack.resource_urls(reference),
+                embedded: self.embedded(reference),
             });
         }
         if has(Role::Link) {
@@ -532,6 +541,12 @@ impl<'a> Renderer<'a> {
             );
         }
         None
+    }
+
+    fn embedded(&self, reference: &str) -> Option<String> {
+        self.pack
+            .has_resource(reference)
+            .then(|| reference.to_owned())
     }
 
     fn icon(&self, path: &Path, text: &TextStyle, name: String) -> Icon {

@@ -39,6 +39,24 @@ impl Pack {
             .optional()?)
     }
 
+    /// Whether the pack stores `kind:key` itself (its `resources` table).
+    pub fn has_resource(&self, reference: &str) -> bool {
+        if self.meta().resources() == Some(0) {
+            return false;
+        }
+        let Some((kind, key)) = reference.split_once(':') else {
+            return false;
+        };
+        self.db()
+            .query_row(
+                "SELECT 1 FROM resources WHERE kind = ? AND key = ?",
+                [kind, key],
+                |_| Ok(()),
+            )
+            .optional()
+            .is_ok_and(|found| found.is_some())
+    }
+
     /// URLs for a resource reference `kind:key`, best first. Empty when the
     /// kind has no source or the reference has no `:`.
     pub fn resource_urls(&self, reference: &str) -> Vec<String> {

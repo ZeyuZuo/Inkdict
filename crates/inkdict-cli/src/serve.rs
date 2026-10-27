@@ -1,5 +1,6 @@
 //! `inkdict serve`: the desktop app's commands (apps/desktop/README.md) as
-//! `POST /<command>` with the JSON arguments as body, on 127.0.0.1 only.
+//! `POST /<command>` with the JSON arguments as body, on 127.0.0.1 only;
+//! `GET /resource/<pack id>/<kind>/<key>` serves files the pack stores.
 //! For developing the UI in a browser; the app itself uses Tauri.
 
 use std::path::Path;
@@ -12,6 +13,7 @@ use tiny_http::{Header, Method, Response, Server};
 
 pub fn run(path: &Path, port: u16) -> Result<()> {
     let (mut session, error) = Session::start(None, Some(path.to_owned()));
+    session.set_resource_base(format!("http://127.0.0.1:{port}/resource/"));
     if let Some(error) = error {
         eprintln!("inkdict: {error}");
     }
@@ -25,6 +27,22 @@ pub fn run(path: &Path, port: u16) -> Result<()> {
         path.display()
     );
     for mut request in server.incoming_requests() {
+        if *request.method() == Method::Get
+            && let Some(path) = request.url().strip_prefix("/resource/")
+        {
+            let found = session
+                .dictionary()
+                .and_then(|dictionary| dictionary.resource(path));
+            let response = match found {
+                Some((mime, body)) => {
+                    Response::from_data(body).with_header(header("Content-Type", &mime))
+                }
+                None => Response::from_data(Vec::new()).with_status_code(404),
+            };
+            let _ =
+                request.respond(response.with_header(header("Access-Control-Allow-Origin", "*")));
+            continue;
+        }
         let mut body = String::new();
         let (status, value) = if *request.method() == Method::Options {
             (204, Value::Null)

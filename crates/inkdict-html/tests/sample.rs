@@ -1,7 +1,7 @@
 mod common;
 
 use inkdict_core::{Pack, theme::ThemeStack};
-use inkdict_html::{Markup, entry_html, theme_css};
+use inkdict_html::{Markup, entry_html, entry_html_with_resources, theme_css};
 
 #[test]
 fn sample_html_tabs_anchors_and_audio_urls() {
@@ -32,10 +32,44 @@ fn sample_html_tabs_anchors_and_audio_urls() {
             .count(),
         2
     );
-    // The GB bytes are embedded, but the current renderer exposes only source URLs.
-    // Embedded-resource URLs need a product change; byte retrieval is tested in core.
-    assert!(pack.resource("audio:harbour-gb").unwrap().is_some());
-    assert!(pack.resource("audio:harbour-us").unwrap().is_none());
+    // Without a resource base (previews) only online URLs appear.
+    assert!(!html.contains("inkdict-res"));
+}
+
+#[test]
+fn sample_html_tries_files_the_pack_stores_first() {
+    let pack = Pack::open(common::sample_pack()).unwrap();
+    let registry = pack.registry().unwrap();
+    let stack = ThemeStack::new(pack.theme("default").unwrap());
+    let renderer = pack.renderer(&registry, &stack);
+    let base = Some("inkdict-res://localhost/sample-en-zh/");
+    let harbour = entry_html_with_resources(
+        &renderer.render(&pack.entry("harbour").unwrap()),
+        Markup::App,
+        base,
+    );
+    assert!(harbour.contains(
+        "data-audio=\"inkdict-res://localhost/sample-en-zh/audio/harbour-gb https://media.example.org/sample-en-zh/audio/harbour-gb.mp3\""
+    ));
+    assert!(
+        harbour
+            .contains("data-audio=\"https://media.example.org/sample-en-zh/audio/harbour-us.mp3\"")
+    );
+    let lantern = entry_html_with_resources(
+        &renderer.render(&pack.entry("lantern").unwrap()),
+        Markup::App,
+        base,
+    );
+    assert!(lantern.contains("<img src=\"inkdict-res://localhost/sample-en-zh/image/lantern\""));
+    let preview = entry_html_with_resources(
+        &renderer.render(&pack.entry("lantern").unwrap()),
+        Markup::Preview,
+        base,
+    );
+    assert!(
+        !preview.contains("inkdict-res"),
+        "previews keep the reference HTML"
+    );
 }
 
 #[test]

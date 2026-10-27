@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src https:; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: inkdict-res: http://inkdict-res.localhost; media-src https: inkdict-res: http://inkdict-res.localhost; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {

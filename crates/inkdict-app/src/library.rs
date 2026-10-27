@@ -39,6 +39,7 @@ pub struct Session {
     config_path: Option<PathBuf>,
     config: Config,
     dictionary: Option<Dictionary>,
+    resource_base: Option<String>,
 }
 
 impl Session {
@@ -50,6 +51,7 @@ impl Session {
             config_path,
             config,
             dictionary: None,
+            resource_base: None,
         };
         if let Some(path) = pack {
             let path = canonical_or_original(&path);
@@ -73,6 +75,22 @@ impl Session {
         });
         let save_error = session.save().err();
         (session, error.or(save_error))
+    }
+
+    /// Where the host serves the files packs store themselves, e.g.
+    /// `inkdict-res://localhost/`; entry HTML then tries
+    /// `<base><pack id>/<kind>/<key>` before online sources, and the host
+    /// answers it with [`Dictionary::resource`].
+    pub fn set_resource_base(&mut self, base: impl Into<String>) {
+        self.resource_base = Some(base.into());
+        if let Some(dictionary) = &mut self.dictionary {
+            dictionary.set_resource_base(self.resource_base.clone());
+        }
+    }
+
+    fn install(&mut self, mut dictionary: Dictionary) {
+        dictionary.set_resource_base(self.resource_base.clone());
+        self.dictionary = Some(dictionary);
     }
 
     pub fn dictionary(&self) -> Option<&Dictionary> {
@@ -128,7 +146,7 @@ impl Session {
                     self.config.packs.push(path.clone());
                     if self.config.active.is_none() {
                         self.config.active = Some(path);
-                        self.dictionary = Some(dictionary);
+                        self.install(dictionary);
                     }
                 }
                 Err(error) => rejected.push(Rejected {
@@ -152,12 +170,14 @@ impl Session {
         if self.config.active.as_ref() == Some(&removed) {
             self.dictionary = None;
             self.config.active = None;
-            for path in &self.config.packs {
-                if let Ok(dictionary) = Dictionary::open(path, self.config.settings.clone()) {
-                    self.dictionary = Some(dictionary);
-                    self.config.active = Some(path.clone());
-                    break;
-                }
+            let opened = self.config.packs.iter().find_map(|path| {
+                Dictionary::open(path, self.config.settings.clone())
+                    .ok()
+                    .map(|dictionary| (path.clone(), dictionary))
+            });
+            if let Some((path, dictionary)) = opened {
+                self.install(dictionary);
+                self.config.active = Some(path);
             }
         }
         self.save()?;
@@ -180,7 +200,7 @@ impl Session {
         let dictionary = Dictionary::open(path, self.config.settings.clone())?;
         let info = dictionary.info();
         self.config.active = Some(path.clone());
-        self.dictionary = Some(dictionary);
+        self.install(dictionary);
         self.save()?;
         Ok(info)
     }
