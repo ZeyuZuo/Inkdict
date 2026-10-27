@@ -4,6 +4,8 @@ description = "Command-line dictionary lookup and benchmarks for Inkdict packs"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "inkdict"

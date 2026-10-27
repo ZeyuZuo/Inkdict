@@ -4,6 +4,8 @@ description = "Reads Inkdict dictionary packs (.inkdict): entries, word list, su
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 rusqlite = { version = "0.41", features = ["bundled"] }

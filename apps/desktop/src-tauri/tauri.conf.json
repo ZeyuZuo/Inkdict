@@ -37,6 +37,8 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "license": "MIT OR Apache-2.0",
+    "copyright": "Copyright (c) 2026 The Inkdict authors"
   }
 }
