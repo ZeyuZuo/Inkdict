@@ -1,0 +1,122 @@
+name: Release
+
+# Pushing a tag v* builds the desktop app and the inkdict tool for Linux,
+# Windows and macOS and attaches them, with the sample dictionary, to a
+# draft release. Publishing the draft is a manual step.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    runs-on: ubuntu-22.04
+    outputs:
+      id: ${{ steps.create.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: create
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const tag = context.ref.replace('refs/tags/', '');
+            const notes = `docs/release-notes/${tag}.md`;
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `Inkdict ${tag}`,
+              body: fs.existsSync(notes) ? fs.readFileSync(notes, 'utf8') : '',
+              draft: true,
+            });
+            return data.id;
+
+  desktop:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            args: ''
+          - os: windows-latest
+            args: ''
+          - os: macos-latest
+            args: '--target universal-apple-darwin'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tauri system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Both macOS architectures
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+        working-directory: apps/desktop
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          releaseId: ${{ needs.create-release.outputs.id }}
+          args: ${{ matrix.args }}
+
+  cli:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p inkdict-cli --target ${{ matrix.target }}
+      - name: Archive
+        shell: bash
+        run: |
+          name="inkdict-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir "$name"
+          cp LICENSE-MIT LICENSE-APACHE crates/inkdict-cli/README.md "$name/"
+          if [ "${{ runner.os }}" = Windows ]; then
+            cp "target/${{ matrix.target }}/release/inkdict.exe" "$name/"
+            7z a "$name.zip" "$name" > /dev/null
+            echo "ASSET=$name.zip" >> "$GITHUB_ENV"
+          else
+            cp "target/${{ matrix.target }}/release/inkdict" "$name/"
+            tar czf "$name.tar.gz" "$name"
+            echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"
+          fi
+      - name: Sample dictionary
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          target/${{ matrix.target }}/release/inkdict pack spec/samples/en-zh/manifest.toml -o sample-en-zh.inkdict
+          gh release upload "$GITHUB_REF_NAME" sample-en-zh.inkdict
+      - run: gh release upload "$GITHUB_REF_NAME" "$ASSET"
+        shell: bash

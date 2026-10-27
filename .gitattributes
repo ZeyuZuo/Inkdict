@@ -1,0 +1,7 @@
+# Check out text with LF everywhere: the sample dictionary and test fixtures
+# are compared byte for byte.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary
+*.wav binary
