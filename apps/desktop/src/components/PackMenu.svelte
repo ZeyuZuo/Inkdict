@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import type { Library } from '../lib/types';
   import Icon from './Icon.svelte';
   let { library, title, onuse, onmanage }: {
@@ -6,17 +7,33 @@
   } = $props();
   let open = $state(false);
   let root: HTMLElement;
+  let button: HTMLButtonElement;
 
   function outside(event: MouseEvent) {
     if (open && !root.contains(event.target as Node)) open = false;
   }
   function choose(path: string) { open = false; onuse(path); }
+  // Focus goes into the menu, so Escape reaches this element before the
+  // window's handler (which would move focus to the search box).
+  async function toggle() {
+    open = !open;
+    if (!open) return;
+    await tick();
+    root.querySelector<HTMLElement>('[role="menu"] [aria-checked="true"], [role="menu"] button:not(:disabled)')?.focus();
+  }
+  function key(event: KeyboardEvent) {
+    if (!open || event.key !== 'Escape') return;
+    event.stopPropagation();
+    open = false;
+    button.focus();
+  }
 </script>
 
-<svelte:window onmousedown={outside} onkeydown={event => { if (open && event.key === 'Escape') { event.stopPropagation(); open = false; } }} />
+<svelte:window onmousedown={outside} />
 
-<div bind:this={root} style="min-width:0">
-  <button class="pack-button" aria-haspopup="menu" aria-expanded={open} onclick={() => { open = !open; }} aria-label="切换词典">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div bind:this={root} style="min-width:0" onkeydown={key}>
+  <button class="pack-button" aria-haspopup="menu" aria-expanded={open} onclick={() => void toggle()} aria-label="切换词典" bind:this={button}>
     <span>{title || '没有词典'}</span><Icon name="chevron" size={11} />
   </button>
   {#if open}

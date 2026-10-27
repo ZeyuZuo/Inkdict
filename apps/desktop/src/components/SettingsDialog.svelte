@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import type { Library, PackInfo, Settings } from '../lib/types';
   import type { ThemeMode } from '../lib/storage';
   import { isTauri } from '../lib/api';
@@ -8,12 +8,14 @@
   let { library, pack, settings, theme, onadd, onaddpath, onremove, onmove, onuse, onsettings, ontheme, onclose }: {
     library: Library; pack: PackInfo | null; settings: Settings; theme: ThemeMode;
     onadd: () => void; onaddpath: (path: string) => void; onremove: (path: string) => void;
-    onmove: (path: string, index: number) => void; onuse: (path: string) => void;
+    onmove: (path: string, index: number) => void; onuse: (path: string) => Promise<void>;
     onsettings: (settings: Settings) => void; ontheme: (mode: ThemeMode) => void; onclose: () => void;
   } = $props();
   let dialog: HTMLElement;
   let typed = $state('');
   let dragging = $state<string | null>(null);
+  /** Pack whose grip moved it with the keyboard: its grip gets focus back. */
+  let moved: string | null = null;
   const scales = [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6];
   const scale = $derived(scales.reduce((best, s) => Math.abs(s - settings.font_scale) < Math.abs(best - settings.font_scale) ? s : best));
 
@@ -33,6 +35,28 @@
     event.preventDefault();
     if (dragging) onmove(dragging, index);
     dragging = null;
+  }
+  // ↑↓ on a grip move its pack; the row is re-rendered, so focus follows it.
+  function moveKey(event: KeyboardEvent, path: string, index: number) {
+    const to = { ArrowUp: index - 1, ArrowDown: index + 1 }[event.key];
+    if (to === undefined) return;
+    event.preventDefault();
+    if (to < 0 || to >= library.packs.length) return;
+    moved = path;
+    onmove(path, to);
+  }
+  $effect(() => {
+    const index = library.packs.findIndex(item => item.path === moved);
+    if (index < 0) return;
+    moved = null;
+    void tick().then(() => dialog.querySelectorAll<HTMLElement>('.grip')[index]?.focus());
+  });
+  // The checked radio follows the library, also when a switch failed.
+  async function use(path: string) {
+    await onuse(path);
+    for (const [i, radio] of dialog.querySelectorAll<HTMLInputElement>('input[name="active-pack"]').entries()) {
+      radio.checked = library.packs[i]?.path === library.active;
+    }
   }
   function trap(event: KeyboardEvent) {
     if (event.key === 'Escape') { event.stopPropagation(); onclose(); return; }
@@ -57,11 +81,11 @@
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="pack" class:dragging={dragging === item.path}
           ondragover={event => event.preventDefault()} ondrop={event => drop(event, index)}>
-          <span class="grip" draggable="true" title="拖动调整顺序" role="img" aria-label="拖动调整顺序"
+          <button class="grip" draggable="true" title="拖动或按 ↑↓ 调整顺序" aria-label={`调整 ${item.title ?? item.path} 的顺序`}
             ondragstart={event => { dragging = item.path; event.dataTransfer?.setData('text/plain', item.path); }}
-            ondragend={() => { dragging = null; }}><Icon name="grip" size={14} /></span>
+            ondragend={() => { dragging = null; }} onkeydown={event => moveKey(event, item.path, index)}><Icon name="grip" size={14} /></button>
           <input type="radio" name="active-pack" checked={item.path === library.active} disabled={item.error !== null}
-            aria-label={`使用 ${item.title ?? item.path}`} onchange={() => onuse(item.path)} />
+            aria-label={`使用 ${item.title ?? item.path}`} onchange={() => void use(item.path)} />
           <div style="min-width:0">
             <div class="name">{item.title ?? shortPath(item.path)}</div>
             <div class="meta" class:bad={item.error !== null} title={item.path}>{meta(item)}</div>

@@ -31,8 +31,12 @@
     return () => narrow.removeEventListener('change', update);
   });
 
+  /** Keys that belong to an input method: WebKit sends the key that
+   *  commits a composition after compositionend, as keyCode 229. */
+  const composing = (event: KeyboardEvent) => event.isComposing || event.keyCode === 229;
+
   function searchKey(event: KeyboardEvent) {
-    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (composing(event) || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       dictionary.move(event.key === 'ArrowDown' ? 1 : -1);
@@ -48,7 +52,7 @@
   }
 
   function globalKey(event: KeyboardEvent) {
-    if (event.isComposing) return;
+    if (composing(event)) return;
     const key = event.key.toLowerCase();
     const mod = event.ctrlKey || event.metaKey;
     const target = event.target;
@@ -134,7 +138,7 @@
   <SettingsDialog library={dictionary.library} pack={dictionary.pack} settings={dictionary.settings} theme={dictionary.theme}
     onadd={() => void add()} onaddpath={path => void dictionary.addPacks([path])}
     onremove={path => void dictionary.removePack(path)} onmove={(path, index) => void dictionary.movePack(path, index)}
-    onuse={path => void dictionary.usePack(path)} onsettings={settings => void dictionary.updateSettings(settings)}
+    onuse={path => dictionary.usePack(path)} onsettings={settings => void dictionary.updateSettings(settings)}
     ontheme={mode => dictionary.setTheme(mode)} onclose={closeSettings} />
 {/if}
 

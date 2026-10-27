@@ -55,6 +55,7 @@ export function clicked(target: Element): boolean {
 
 /** ←/→, Home, End on a focused tab move between tabs. */
 export function keyed(event: KeyboardEvent): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey) return false;
   const tab = (event.target as Element | null)?.closest?.<HTMLElement>('.dx-tab');
   const group = tab?.closest('.dx-tabs');
   if (!tab || !group) return false;

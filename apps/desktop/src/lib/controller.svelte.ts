@@ -55,8 +55,15 @@ export class Dictionary {
   private storage = browserStorage();
   private queries = new Sequence();
   private entries = new Sequence();
+  private packs = new Sequence();
+  /** The pack being switched to, until that switch finishes. */
+  private switching: string | null = null;
   private showTimer: ReturnType<typeof setTimeout> | undefined;
   private shownWhileTyping = false;
+  /** The latest lookup: Enter waits for it when it is still running. */
+  private listing: Promise<Word[] | null> = Promise.resolve([]);
+  /** Where Alt+← / Alt+→ is heading while the entry loads, so quick presses add up. */
+  private travelling: History | null = null;
 
   async initialize() {
     this.setTheme(loadTheme(this.storage));
@@ -111,7 +118,12 @@ export class Dictionary {
 
   /** Look up `text`; the list is ready when this resolves (null if a later
    *  input overtook it). In a wide window the top row's entry follows. */
-  async lookup(text: string, started = performance.now(), show = !this.narrow) {
+  lookup(text: string, started = performance.now(), show = !this.narrow) {
+    this.listing = this.list(text, started, show);
+    return this.listing;
+  }
+
+  private async list(text: string, started: number, show: boolean) {
     this.text = text;
     clearTimeout(this.showTimer);
     const token = this.queries.next();
@@ -149,9 +161,22 @@ export class Dictionary {
     if (!this.narrow && this.selection >= 0) void this.show(this.selection, true);
   }
 
-  /** Open a row on purpose (click, Enter): a history stop of its own. */
-  async choose(index = this.selection) {
+  /** Open a row on purpose (click, Enter): a history stop of its own.
+   *  Enter (no index) before the list for the typed text has arrived waits
+   *  for it and opens its top row. */
+  async choose(index?: number) {
+    if (index === undefined) {
+      index = this.selection;
+      if (this.searched !== this.text) {
+        const words = await this.listing;
+        if (!words || this.searched !== this.text) return;
+        index = 0;
+      }
+    }
     if (index < 0 || index >= this.words.length) return;
+    // A lookup still running must not reopen the list or show its top row.
+    this.queries.next();
+    clearTimeout(this.showTimer);
     this.selection = index;
     this.listOpen = false;
     await this.show(index, false);
@@ -163,18 +188,18 @@ export class Dictionary {
     if (!word) return;
     const focus: Focus = word.anchor ? { kind: 'anchor', number: word.anchor } : { kind: 'top' };
     const replace = typing && this.shownWhileTyping;
-    await this.open(word.entry, focus, { replace });
     // Entries shown while typing share one history stop until one is chosen.
-    this.shownWhileTyping = typing;
+    if (await this.open(word.entry, focus, { replace })) this.shownWhileTyping = typing;
   }
 
-  async open(key: string, focus: Focus = { kind: 'top' }, options: OpenOptions = {}) {
+  /** Show an entry; false if a later request overtook this one or it failed. */
+  async open(key: string, focus: Focus = { kind: 'top' }, options: OpenOptions = {}): Promise<boolean> {
     const token = this.entries.next();
     const started = performance.now();
     this.loading = true;
     try {
       const entry = await api.entry(key);
-      if (!this.entries.current(token)) return;
+      if (!this.entries.current(token)) return false;
       const left = leave(this.history, this.view());
       const from = options.navigation
         ? options.navigation.visits[options.navigation.index].from
@@ -187,21 +212,28 @@ export class Dictionary {
       this.entryStarted = started;
       this.current = entry;
       this.error = '';
+      return true;
     } catch (error) {
       if (this.entries.current(token)) this.report(error);
+      return false;
     } finally {
-      if (this.entries.current(token)) this.loading = false;
+      if (this.entries.current(token)) { this.loading = false; this.travelling = null; }
     }
   }
 
   /** Alt+← / Alt+→ and the mouse side buttons: entry, place and search box come back. */
   async navigate(direction: -1 | 1) {
-    const left = leave(this.history, this.view());
+    clearTimeout(this.showTimer);
+    const left = this.travelling ?? leave(this.history, this.view());
     const next = travel(left, direction);
     if (next === left) return;
+    this.travelling = next;
+    this.entries.next();
     this.shownWhileTyping = false;
     const target = next.visits[next.index];
     if (target.text !== this.text) await this.lookup(target.text, performance.now(), false);
+    // Another press, or a chosen row, overtook this one during the lookup.
+    if (this.travelling !== next) return;
     this.listOpen = false;
     const index = this.words.findIndex(word => word.entry === target.key);
     this.selection = index;
@@ -210,6 +242,7 @@ export class Dictionary {
 
   async follow(link: Link) {
     if (!this.current) return;
+    clearTimeout(this.showTimer);
     const source = this.current;
     const token = this.entries.next();
     try {
@@ -280,13 +313,24 @@ export class Dictionary {
     try { this.library = await api.movePack(path, index); } catch (error) { this.report(error); }
   }
 
+  /** Switch packs; quick switches (arrow keys in the settings list) only
+   *  finish the last one. */
   async usePack(path: string) {
-    if (path === this.library.active) return;
+    if (path === (this.switching ?? this.library.active)) return;
+    const token = this.packs.next();
+    this.switching = path;
     try {
       await api.usePack(path);
+      if (!this.packs.current(token)) return;
       await this.refreshLibrary();
       await this.switched();
-    } catch (error) { this.report(error); }
+    } catch (error) {
+      if (!this.packs.current(token)) return;
+      this.report(error);
+      await this.refreshLibrary().catch(() => {});
+    } finally {
+      if (this.packs.current(token)) this.switching = null;
+    }
   }
 
   /** Another pack is open (or none): start over with its theme. */
