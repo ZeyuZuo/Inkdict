@@ -22,8 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      # The toolchain comes from rust-toolchain.toml.
-      - run: cargo test
+      # The toolchain comes from rust-toolchain.toml. On failure the
+      # failing lines also become an annotation, readable without the log.
+      - name: cargo test
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! cargo test --no-fail-fast 2>&1 | tee test.log; then
+            summary=$(grep -E -A4 "^error|^test .* FAILED|panicked at" test.log | head -150 \
+              | sed -e 's/%/%25/g' -e 's/\r//g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=cargo test failed::${summary}"
+            exit 1
+          fi
 
   lint:
     name: Lint, desktop build check, UI
