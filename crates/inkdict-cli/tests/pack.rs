@@ -73,16 +73,12 @@ fn json_and_overrides_and_default_output() {
     let manifest = fs::read_to_string(sample()).unwrap();
     // Point registry/theme/resources at the checked-in sample; default output
     // stays beside this copied manifest.
+    // TOML literal strings: Windows paths contain backslashes.
+    let literal = |name: &str| format!("'{}'", source.join(name).display());
     let manifest = manifest
-        .replace("types.toml", &source.join("types.toml").to_string_lossy())
-        .replace(
-            "themes/default.toml",
-            &source.join("themes/default.toml").to_string_lossy(),
-        )
-        .replace(
-            "resources = \"resources\"",
-            &format!("resources = {:?}", source.join("resources")),
-        );
+        .replace("\"types.toml\"", &literal("types.toml"))
+        .replace("\"themes/default.toml\"", &literal("themes/default.toml"))
+        .replace("\"resources\"", &literal("resources"));
     fs::write(dir.0.join("manifest.toml"), manifest).unwrap();
     fs::write(
         dir.0.join("entries.jsonl"),

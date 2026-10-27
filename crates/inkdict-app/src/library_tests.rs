@@ -5,7 +5,7 @@ use crate::tests::sample_pack;
 fn copy_pack(source: &Path, dir: &Path, name: &str) -> PathBuf {
     let path = dir.join(name);
     std::fs::copy(source, &path).unwrap();
-    path.canonicalize().unwrap()
+    dunce::canonicalize(path).unwrap()
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn config_discards_an_active_path_outside_the_library() {
 
 #[test]
 fn add_activates_first_valid_pack_and_rejects_duplicates_and_invalid_files() {
-    let pack = sample_pack().canonicalize().unwrap();
+    let pack = dunce::canonicalize(sample_pack()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let config_path = dir.path().join("config.json");
     let invalid = dir.path().join("text.inkdict");
@@ -94,7 +94,7 @@ fn add_activates_first_valid_pack_and_rejects_duplicates_and_invalid_files() {
 #[cfg(unix)]
 #[test]
 fn add_and_use_compare_symlink_targets() {
-    let pack = sample_pack().canonicalize().unwrap();
+    let pack = dunce::canonicalize(sample_pack()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let alias = dir.path().join("alias.inkdict");
     std::os::unix::fs::symlink(&pack, &alias).unwrap();
@@ -110,7 +110,7 @@ fn add_and_use_compare_symlink_targets() {
 
 #[test]
 fn move_changes_display_order_only_and_clamps_the_index() {
-    let pack = sample_pack().canonicalize().unwrap();
+    let pack = dunce::canonicalize(sample_pack()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let second = copy_pack(&pack, dir.path(), "second.inkdict");
     let config_path = dir.path().join("config.json");
@@ -126,7 +126,7 @@ fn move_changes_display_order_only_and_clamps_the_index() {
 
 #[test]
 fn remove_active_skips_broken_packs_and_opens_the_next_usable_pack() {
-    let pack = sample_pack().canonicalize().unwrap();
+    let pack = dunce::canonicalize(sample_pack()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let broken = copy_pack(&pack, dir.path(), "broken.inkdict");
     let next = copy_pack(&pack, dir.path(), "next.inkdict");
@@ -154,7 +154,7 @@ fn remove_active_skips_broken_packs_and_opens_the_next_usable_pack() {
 
 #[test]
 fn remove_inactive_preserves_the_open_dictionary() {
-    let pack = sample_pack().canonicalize().unwrap();
+    let pack = dunce::canonicalize(sample_pack()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let other = copy_pack(&pack, dir.path(), "other.inkdict");
     let (mut session, _) = Session::start(None, Some(pack.clone()));
@@ -167,7 +167,7 @@ fn remove_inactive_preserves_the_open_dictionary() {
 
 #[test]
 fn use_requires_membership_and_failed_open_preserves_the_active_pack() {
-    let pack = sample_pack().canonicalize().unwrap();
+    let pack = dunce::canonicalize(sample_pack()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let other = copy_pack(&pack, dir.path(), "other.inkdict");
     let config_path = dir.path().join("config.json");
@@ -194,7 +194,7 @@ fn use_requires_membership_and_failed_open_preserves_the_active_pack() {
 
 #[test]
 fn startup_override_adds_or_selects_a_pack_and_preserves_settings() {
-    let pack = sample_pack().canonicalize().unwrap();
+    let pack = dunce::canonicalize(sample_pack()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let other = copy_pack(&pack, dir.path(), "other.inkdict");
     let config_path = dir.path().join("config.json");
@@ -226,7 +226,7 @@ fn startup_override_adds_or_selects_a_pack_and_preserves_settings() {
 
 #[test]
 fn settings_are_saved_only_after_the_open_dictionary_accepts_them() {
-    let pack = sample_pack().canonicalize().unwrap();
+    let pack = dunce::canonicalize(sample_pack()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let config_path = dir.path().join("config.json");
     let (mut session, _) = Session::start(Some(config_path.clone()), Some(pack));
@@ -266,7 +266,7 @@ fn settings_without_an_open_pack_are_saved() {
 
 #[test]
 fn in_memory_session_writes_nothing() {
-    let pack = sample_pack().canonicalize().unwrap();
+    let pack = dunce::canonicalize(sample_pack()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let local = copy_pack(&pack, dir.path(), "local.inkdict");
     let before = std::fs::read(&local).unwrap();

@@ -1633,6 +1633,7 @@ dependencies = [
 name = "inkdict-app"
 version = "0.1.0"
 dependencies = [
+ "dunce",
  "inkdict-core",
  "inkdict-html",
  "inkdict-pack",

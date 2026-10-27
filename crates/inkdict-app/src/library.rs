@@ -132,7 +132,7 @@ impl Session {
         let mut rejected = Vec::new();
         for path in paths {
             let add = || -> Result<(PathBuf, Dictionary)> {
-                let canonical = path.canonicalize().map_err(|error| {
+                let canonical = dunce::canonicalize(&path).map_err(|error| {
                     AppError::new("bad_input", format!("{}: {error}", path.display()))
                 })?;
                 if self.position(&canonical).is_ok() {
@@ -242,7 +242,7 @@ impl Session {
 }
 
 fn canonical_or_original(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| path.to_owned())
+    dunce::canonicalize(path).unwrap_or_else(|_| path.to_owned())
 }
 
 #[cfg(test)]

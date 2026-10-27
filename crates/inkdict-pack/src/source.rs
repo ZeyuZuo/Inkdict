@@ -164,7 +164,9 @@ pub(crate) fn load_source(path: &Path) -> std::result::Result<Source, SourceErro
             sources.push((kind.to_owned(), template.to_owned()));
         }
     }
-    let base = fs::canonicalize(path)
+    // Absolute, not canonical: messages keep the path as given (no symlink
+    // resolution, no \\?\ prefix on Windows).
+    let base = std::path::absolute(path)
         .map_err(|e| error(&e.to_string()))?
         .parent()
         .unwrap()

@@ -167,7 +167,13 @@ mod tests {
     #[test]
     fn opens_paths_with_uri_characters() {
         let test = TestPack::new();
-        let odd = test.dir().join("a b?#%20.inkdict");
+        // `?` is not allowed in Windows file names.
+        let name = if cfg!(windows) {
+            "a b#%20&=.inkdict"
+        } else {
+            "a b?#%20.inkdict"
+        };
+        let odd = test.dir().join(name);
         std::fs::rename(test.path(), &odd).unwrap();
         assert_eq!(Pack::open(odd).unwrap().meta().id(), "test");
     }

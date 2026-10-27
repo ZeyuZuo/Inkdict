@@ -89,6 +89,7 @@ fn index_classes_boosts_ties_and_fold_keys() {
         ("cafe".into(), 0, "CAFÉ".into(), "headword".into())
     );
     f.replace("manifest.toml", "fold-1", "exact-1");
+    drop(db); // Windows cannot replace a file that is open
     f.build();
     let db = f.db();
     assert_eq!(
@@ -148,6 +149,7 @@ fn first_homograph_at_root_decides_even_when_invalid() {
         report.problems.0["homograph not a positive integer"].samples[0].detail,
         "0"
     );
+    drop(pack); // Windows cannot replace a file that is open
     f.replace("entries.jsonl", "\"text\":\"0\"", "\"text\":\"٢\"");
     assert_eq!(
         Pack::open(f.build().output)
@@ -363,6 +365,7 @@ fn entries_preserve_crlf_source_lines_and_empty_source_is_valid() {
         pack.entry_json("a").unwrap(),
         "{\"type\":\"entry\",\"id\":\"a\",\"lang\":\"en\"}"
     );
+    drop(pack); // Windows cannot replace a file that is open
     f.write("entries.jsonl", "");
     assert_eq!(f.build().entries, 0);
 }

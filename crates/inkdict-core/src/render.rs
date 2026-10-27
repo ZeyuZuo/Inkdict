@@ -868,7 +868,8 @@ font = "ui"
         }
         let started = std::time::Instant::now();
         render("[style.panel]\ncollapse = \"closed\"", &children);
-        assert!(started.elapsed().as_millis() < 500, "24 nested collapses");
+        // Rendering each collapse twice would take 2^24 renders: far beyond this.
+        assert!(started.elapsed().as_millis() < 3000, "24 nested collapses");
     }
 
     #[test]

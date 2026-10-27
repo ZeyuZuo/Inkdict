@@ -187,7 +187,12 @@ pub(crate) fn build(options: Options) -> Result<Report> {
         transaction.commit()?;
         db.execute_batch("VACUUM")?;
         db.close().map_err(|(_, error)| error)?;
-        fs::rename(&temporary, &output)?;
+        fs::rename(&temporary, &output).map_err(|err| {
+            source::bad(format!(
+                "{}: cannot replace it ({err}); on Windows, close programs that have it open",
+                output.display()
+            ))
+        })?;
         Ok(Report {
             output: output.to_string_lossy().into_owned(),
             bytes: fs::metadata(&output)?.len(),
