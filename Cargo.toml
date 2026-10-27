@@ -1,8 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["crates/inkdict-core", "crates/inkdict-html", "crates/inkdict-app", "crates/inkdict-cli", "apps/desktop/src-tauri"]
+members = ["crates/inkdict-core", "crates/inkdict-html", "crates/inkdict-app", "crates/inkdict-cli", "crates/inkdict-pack", "apps/desktop/src-tauri"]
 # The desktop app needs WebKitGTK to build; plain `cargo test` skips it.
-default-members = ["crates/inkdict-core", "crates/inkdict-html", "crates/inkdict-app", "crates/inkdict-cli"]
+default-members = ["crates/inkdict-core", "crates/inkdict-html", "crates/inkdict-app", "crates/inkdict-cli", "crates/inkdict-pack"]
 
 [workspace.package]
 version = "0.1.0"

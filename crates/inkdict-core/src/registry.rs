@@ -83,6 +83,8 @@ pub struct TypeSpec {
     pub children: HashSet<String>,
     /// Attribute name -> declared type (`string`, `int`, `res?`, `enum(a|b)`…).
     pub attrs: BTreeMap<String, String>,
+    /// Attribute names in declaration order, used by source validation.
+    pub attr_order: Vec<String>,
     pub roles: Vec<Role>,
     /// Lookup kind, present exactly when this type has the index role.
     pub index: Option<IndexKind>,
@@ -138,6 +140,7 @@ impl Registry {
             }
             let mut attrs = BTreeMap::new();
             let mut res_attrs = Vec::new();
+            let mut attr_order = Vec::new();
             for (attr, kind) in table(spec, "attrs")? {
                 let kind = kind
                     .as_str()
@@ -150,6 +153,7 @@ impl Registry {
                 if kind.trim_end_matches('?') == "res" {
                     res_attrs.push(attr.clone());
                 }
+                attr_order.push(attr.clone());
                 attrs.insert(attr.clone(), kind.to_owned());
             }
             let roles: Vec<Role> = strings(spec, "roles", name)?
@@ -183,6 +187,7 @@ impl Registry {
                     kind,
                     children,
                     attrs,
+                    attr_order,
                     roles,
                     index: kind_of_index,
                     res_attrs,

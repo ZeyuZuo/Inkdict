@@ -14,6 +14,24 @@ use args::{Args, Command};
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    if let Command::Pack {
+        manifest,
+        output,
+        report,
+        entries,
+        summaries,
+    } = args.command
+    {
+        return commands::build_pack(
+            manifest,
+            output,
+            report,
+            entries,
+            summaries,
+            args.json,
+            &mut io::stdout().lock(),
+        );
+    }
     let path = args
         .pack
         .context("no pack specified: pass --pack <PATH> or set INKDICT_PACK")?;

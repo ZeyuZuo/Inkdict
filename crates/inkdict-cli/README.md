@@ -1,7 +1,8 @@
 # inkdict
 
-Build with `cargo build --release -p inkdict-cli`. Pass `--pack PATH` to any
-command, or set `INKDICT_PACK`. All commands accept `--json`.
+Build with `cargo build --release -p inkdict-cli`. Reader commands take
+`--pack PATH`, or use `INKDICT_PACK`. All commands accept `--json`;
+`pack` builds a new dictionary without an existing pack.
 
 ```sh
 export INKDICT_PACK=oxdata/oalecd10.inkdict
@@ -72,3 +73,21 @@ across groups; each miss's `got` lists all returned headwords in order.
 JSON includes `count`, `top1`, `top1_percent`, `top5`, `top5_percent`, `misses`,
 `miss_percent` and `first_misses` (each with `typo`, `expected` and `got`).
 Malformed or empty evaluation input is an error.
+
+Build a pack from a source directory without an existing `--pack`:
+
+```sh
+target/release/inkdict pack spec/samples/en-zh/manifest.toml -o sample.inkdict --report sample.json
+```
+
+`pack MANIFEST` defaults to `<manifest directory>/<pack.id>.inkdict`.
+`-o`/`--output FILE` selects another output, `--entries FILE` and
+`--summaries FILE` override the manifest's inputs, and `--report FILE` saves
+the full JSON report. `--json` prints that report instead of the count summary.
+Bad source files stop the build with a nonzero exit status; content problems
+are counted by kind with up to five samples each in the report. Output is
+written to a temporary file beside the destination and replaced atomically.
+
+Entries and summaries use JSON Lines with LF or CRLF record endings; the
+final record may omit its line ending. Blank records are invalid JSON. Parse
+errors include the input path, record number, and the native JSON parser error.

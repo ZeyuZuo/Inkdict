@@ -1,0 +1,23 @@
+[package]
+name = "inkdict-pack"
+description = "Builds Inkdict packs (.inkdict) from a source directory"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+inkdict-core = { path = "../inkdict-core" }
+rusqlite = { version = "0.41", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+thiserror = "2"
+time = { version = "0.3", features = ["formatting"] }
+toml = { version = "1.1", default-features = false, features = ["parse", "serde", "std", "preserve_order"] }
+unicode-normalization = "0.1.26"
+zstd = "0.14"
+
+[dev-dependencies]
+tempfile = "3"

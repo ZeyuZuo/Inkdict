@@ -4,7 +4,7 @@
 
 打包程序把一部词典的**源目录**（§1）转换成一个 SQLite 文件 `.inkdict`（§2–§4，表结构见 `pack-v1.sql`），读取端只读打开。§5 是读取端查词的规则，两个客户端都按它实现，结果一致。
 
-参考实现：打包程序在 OxDic 仓库 `oxdic/pack/`，读取端是本仓库的 `crates/inkdict-core`。
+参考实现都在本仓库：打包程序是 `crates/inkdict-pack`（命令 `inkdict pack`），读取端是 `crates/inkdict-core`。
 
 ## 1. 源目录
 
@@ -43,7 +43,7 @@
 
 ### 1.2 entries.jsonl
 
-UTF-8，每行一个词条，即 `v1.md` §2 的一棵节点树。行的顺序就是包内词条编号的顺序。
+UTF-8，每行一个词条，即 `v1.md` §2 的一棵节点树。行以 LF 结束（行尾的 CR 一并去掉，所以 CRLF 也可以），最后一行可以没有 LF；不允许空行。行的顺序就是包内词条编号的顺序。`summaries.jsonl` 的分行规则相同。
 
 ### 1.3 summaries.jsonl
 

@@ -16,10 +16,11 @@ spec/               协议 v1（草案）
   pack-v1.sql       .inkdict 的表结构
   samples/en-zh/    一部虚构英汉词典的完整源目录
 crates/
-  inkdict-core/       Rust 核心：读包、词表（前缀 / 含有 / 拼写接近）、词条解析、资源、链接、主题层叠与渲染树
-  inkdict-html/       把渲染树写成 HTML，给出主题 CSS（桌面端用）
-  inkdict-app/        桌面端的应用逻辑：词典库、设置、命令，与 Tauri 无关
-  inkdict-cli/        命令行工具 inkdict：info/words/show/render/themes/serve，基准测试与纠错评测
+  inkdict-core/     Rust 核心：读包、词表（前缀 / 含有 / 拼写接近）、词条解析、资源、链接、主题层叠与渲染树
+  inkdict-html/     把渲染树写成 HTML，给出主题 CSS（桌面端用）
+  inkdict-app/      桌面端的应用逻辑：词典库、设置、命令，与 Tauri 无关
+  inkdict-pack/     打包程序：把源目录（spec/pack-v1.md §1）打成 .inkdict
+  inkdict-cli/      命令行工具 inkdict：pack/info/words/show/render/themes/serve，基准测试与纠错评测
 apps/
   desktop/          桌面端（Tauri 2 + Svelte 5，界面跑在 WebView 里）
   android/          Android（Kotlin + Jetpack Compose，未开始）
@@ -27,6 +28,7 @@ scripts/
   sync-oxdata.sh    从 OxDic 复制已打包的 Oxford 数据到 oxdata/（不入库）
   make-golden.py    用 OxDic 的 Python 参考读取器生成对照输出 oxdata/golden/
   bench.py          生成基准测试输入，测 Python 参考读取器的耗时
+  compare-packs.py  逐表比较两个 .inkdict（核对 inkdict pack 与 OxDic 的 Python 打包程序）
 docs/
   architecture.md   各部分怎么配合，核心如何被各端使用
   roadmap.md        开发阶段与退出条件

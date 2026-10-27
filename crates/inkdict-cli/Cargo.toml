@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 inkdict-core = { path = "../inkdict-core" }
+inkdict-pack = { path = "../inkdict-pack" }
 clap = { version = "4", features = ["derive", "env"] }
 serde_json = "1"
 anyhow = "1"

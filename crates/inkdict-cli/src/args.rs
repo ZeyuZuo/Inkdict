@@ -21,6 +21,18 @@ pub struct Args {
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Build a dictionary pack from a source manifest.
+    Pack {
+        manifest: PathBuf,
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+        #[arg(long, value_name = "FILE")]
+        report: Option<PathBuf>,
+        #[arg(long, value_name = "FILE")]
+        entries: Option<PathBuf>,
+        #[arg(long, value_name = "FILE")]
+        summaries: Option<PathBuf>,
+    },
     /// List metadata and embedded file names.
     Info,
     /// Serve the desktop app's commands over HTTP on localhost, so its UI
