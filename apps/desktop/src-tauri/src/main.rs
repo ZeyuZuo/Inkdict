@@ -9,8 +9,8 @@ mod commands;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use tauri::Manager;
 use inkdict_app::Session;
+use tauri::Manager;
 
 /// Shared by every command: configuration, library, and the open dictionary.
 pub struct AppState {

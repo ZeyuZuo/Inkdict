@@ -5,8 +5,8 @@
 
 use std::path::PathBuf;
 
-use serde_json::Value;
 use inkdict_core::Pack;
+use serde_json::Value;
 
 pub fn oxdata() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../oxdata")

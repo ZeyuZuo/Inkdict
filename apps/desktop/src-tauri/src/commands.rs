@@ -2,11 +2,11 @@
 
 use std::path::PathBuf;
 
-use tauri::State;
 use inkdict_app::{
     Added, AppError, Dictionary, EntryView, Library, PackInfo, Result, Settings, Target, WordView,
 };
 use inkdict_core::Link;
+use tauri::State;
 
 use crate::AppState;
 

@@ -3,8 +3,8 @@
 use std::io::Write;
 
 use anyhow::{Result, ensure};
-use serde_json::json;
 use inkdict_core::Pack;
+use serde_json::json;
 
 use super::print_json;
 

@@ -2,9 +2,9 @@
 
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
 use inkdict_core::theme::{Theme, ThemeStack};
 use inkdict_core::{Registry, Role};
+use serde::{Deserialize, Serialize};
 
 use crate::{AppError, Result};
 

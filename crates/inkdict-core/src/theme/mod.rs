@@ -556,7 +556,11 @@ default = ["UI"]
     fn rejects_v0_and_missing_theme_versions() {
         for version in ["", "version = 0", "version = \"1\""] {
             assert!(
-                Theme::parse("t", &format!("[meta]\nformat = \"inkdict-theme\"\n{version}")).is_err()
+                Theme::parse(
+                    "t",
+                    &format!("[meta]\nformat = \"inkdict-theme\"\n{version}")
+                )
+                .is_err()
             );
         }
     }

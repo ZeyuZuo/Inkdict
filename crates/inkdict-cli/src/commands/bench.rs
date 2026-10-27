@@ -5,9 +5,9 @@ use std::path::Path;
 use std::time::Instant;
 
 use anyhow::{Context, Result, ensure};
-use serde_json::{Value, json};
 use inkdict_core::theme::ThemeStack;
 use inkdict_core::{Pack, Renderer};
+use serde_json::{Value, json};
 
 use super::print_json;
 use crate::args::BenchKind;

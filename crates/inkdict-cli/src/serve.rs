@@ -5,10 +5,10 @@
 use std::path::Path;
 
 use anyhow::{Result, anyhow};
-use serde_json::{Value, json};
-use tiny_http::{Header, Method, Response, Server};
 use inkdict_app::{AppError, Dictionary, Session, Settings};
 use inkdict_core::Link;
+use serde_json::{Value, json};
+use tiny_http::{Header, Method, Response, Server};
 
 pub fn run(path: &Path, port: u16) -> Result<()> {
     let (mut session, error) = Session::start(None, Some(path.to_owned()));

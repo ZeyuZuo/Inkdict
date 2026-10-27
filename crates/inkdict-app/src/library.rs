@@ -2,8 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
 use inkdict_core::Pack;
+use serde::Serialize;
 
 use crate::{AppError, Config, Dictionary, PackInfo, Result, Settings};
 

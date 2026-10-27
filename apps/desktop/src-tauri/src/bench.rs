@@ -5,9 +5,9 @@
 
 use std::path::PathBuf;
 
+use inkdict_app::{AppError, Result};
 use serde::Serialize;
 use tauri::AppHandle;
-use inkdict_app::{AppError, Result};
 
 /// Lines kept from each input file unless `INKDICT_BENCH_LIMIT` says otherwise.
 const DEFAULT_LIMIT: usize = 300;

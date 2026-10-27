@@ -3,9 +3,9 @@
 mod common;
 
 use common::{load, oxdata};
+use inkdict_core::{APPLICATION_ID, FORMAT_VERSION};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
-use inkdict_core::{APPLICATION_ID, FORMAT_VERSION};
 
 #[test]
 fn meta_matches_reference() {

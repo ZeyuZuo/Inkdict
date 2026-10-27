@@ -9,10 +9,10 @@ mod settings;
 
 use std::path::Path;
 
-use serde::Serialize;
 use inkdict_core::theme::{Theme, ThemeStack};
 use inkdict_core::{Error as CoreError, Focus, Link, LinkTarget, Pack, Registry, Word};
 use inkdict_html::{Markup, entry_html, theme_css};
+use serde::Serialize;
 
 pub use config::Config;
 pub use library::{Added, Library, LibraryItem, Rejected, Session};

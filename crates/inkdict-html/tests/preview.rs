@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use serde_json::Value;
 use inkdict_core::theme::ThemeStack;
 use inkdict_core::{Entry, Node, Pack};
 use inkdict_html::{Markup, entry_html};
+use serde_json::Value;
 
 fn oxdata() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../oxdata")

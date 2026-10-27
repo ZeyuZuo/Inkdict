@@ -4,8 +4,8 @@ use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
-use serde_json::json;
 use inkdict_core::Pack;
+use serde_json::json;
 
 use super::print_json;
 
