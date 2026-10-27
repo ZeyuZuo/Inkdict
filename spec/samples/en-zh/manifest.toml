@@ -2,7 +2,7 @@
 # 路径都相对本文件。本示例的词条内容为虚构。
 
 [meta]
-format = "zdict-source"
+format = "inkdict-source"
 version = 1
 
 [pack]

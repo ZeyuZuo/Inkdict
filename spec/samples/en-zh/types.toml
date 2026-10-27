@@ -2,7 +2,7 @@
 # 类型名属于这部词典自己；软件只认 roles，不认类型名。
 
 [meta]
-format = "zdict-types"
+format = "inkdict-types"
 version = 1
 
 [groups]

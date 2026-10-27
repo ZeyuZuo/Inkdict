@@ -1,0 +1,6 @@
+[meta]
+format = "inkdict-theme"
+version = 1
+
+[style.entry]
+size = 1.25

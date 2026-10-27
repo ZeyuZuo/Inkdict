@@ -1,14 +1,14 @@
 # 桌面
 
-Tauri 2。查词由 Tauri 的 Rust 部分（`src-tauri/`）直接调用 `zdict-core`，完全离线。界面用 Svelte 5 + TypeScript（Vite）写在 `src/`，只运行在 Tauri 的 WebView 里，不单独部署。
+Tauri 2。查词由 Tauri 的 Rust 部分（`src-tauri/`）直接调用 `inkdict-core`，完全离线。界面用 Svelte 5 + TypeScript（Vite）写在 `src/`，只运行在 Tauri 的 WebView 里，不单独部署。
 
-词条的 HTML 由 Rust 生成（`crates/zdict-html`，输入是核心的渲染树），界面只负责插入页面和处理点击，不在 TypeScript 里实现主题或排版规则。
+词条的 HTML 由 Rust 生成（`crates/inkdict-html`，输入是核心的渲染树），界面只负责插入页面和处理点击，不在 TypeScript 里实现主题或排版规则。
 
 阶段：`docs/roadmap.md` M3。
 
 ## 界面与 Rust 之间的命令
 
-所有命令用 Tauri `invoke` 调用，参数和返回值是 JSON。字段名用 snake_case，与 `zdict-core` 的类型一致。
+所有命令用 Tauri `invoke` 调用，参数和返回值是 JSON。字段名用 snake_case，与 `inkdict-core` 的类型一致。
 
 | 命令 | 参数 | 返回 |
 | --- | --- | --- |
@@ -25,7 +25,7 @@ Tauri 2。查词由 Tauri 的 Rust 部分（`src-tauri/`）直接调用 `zdict-c
 | `set_settings` | `{ settings }` | `Settings`；之后的 `entry` 按新设置渲染 |
 | `theme_css` | — | 字符串：主题的字体与颜色变量（浅色、深色两套）和 `.dx-*` 基础样式 |
 
-`Settings`：`{ hide_pronunciation: bool, hide_examples: bool, font_scale: number }`。前两项隐藏带 `pronunciation`、`example` role 的类型（`spec/v1.md` §3.2），在 Rust 里变成包主题之上的叠加主题；`font_scale` 由界面用 CSS 变量实现。设置和库保存在应用配置目录的 `config.json`：`{ "packs": ["/a.zdpack", "/b.zdpack"], "active": "/a.zdpack", "settings": { "hide_pronunciation": false, "hide_examples": false, "font_scale": 1.0 } }`。`active` 必须是 `packs` 中的路径或 null；旧格式 `"pack": "/x.zdpack"` 读取为单项库和活动路径，之后仅写新格式。`--pack` / `ZDICT_PACK` 将路径加入库并激活。`zdict serve` 用相同命令和 JSON（`POST /<command>`），库只存在于内存，不保存配置。
+`Settings`：`{ hide_pronunciation: bool, hide_examples: bool, font_scale: number }`。前两项隐藏带 `pronunciation`、`example` role 的类型（`spec/v1.md` §3.2），在 Rust 里变成包主题之上的叠加主题；`font_scale` 由界面用 CSS 变量实现。设置和库保存在应用配置目录的 `config.json`：`{ "packs": ["/a.inkdict", "/b.inkdict"], "active": "/a.inkdict", "settings": { "hide_pronunciation": false, "hide_examples": false, "font_scale": 1.0 } }`。`active` 必须是 `packs` 中的路径或 null；旧格式 `"pack": "/x.inkdict"` 读取为单项库和活动路径，之后仅写新格式。`--pack` / `INKDICT_PACK` 将路径加入库并激活。`inkdict serve` 用相同命令和 JSON（`POST /<command>`），库只存在于内存，不保存配置。
 
 错误：命令失败时 reject，值为 `{ code, message }`，`code` 为 `no_pack`、`not_found`、`bad_input`、`internal` 之一。
 
@@ -46,19 +46,19 @@ CSS：`theme_css` 只给主题的变量和 `.dx-*` 规则；页面自己定义 `
 
 ```bash
 npm install
-ZDICT_PACK=$PWD/../../oxdata/oalecd10.zdpack npm run tauri dev   # 真实窗口（WebKitGTK）；ZDICT_PACK 可省，库记在配置里
+INKDICT_PACK=$PWD/../../oxdata/oalecd10.inkdict npm run tauri dev   # 真实窗口（WebKitGTK）；INKDICT_PACK 可省，库记在配置里
 npm run check && npm test                                    # svelte-check、vitest
 ```
 
 不开窗口时在浏览器里调界面：
 
 ```bash
-cargo build --release -p zdict-cli
-../../target/release/zdict --pack ../../oxdata/oalecd10.zdpack serve --port 1430
-VITE_ZDICT_BRIDGE=http://127.0.0.1:1430 npx vite --port 1421   # 打开 http://localhost:1421
+cargo build --release -p inkdict-cli
+../../target/release/inkdict --pack ../../oxdata/oalecd10.inkdict serve --port 1430
+VITE_INKDICT_BRIDGE=http://127.0.0.1:1430 npx vite --port 1421   # 打开 http://localhost:1421
 ```
 
-不设 `VITE_ZDICT_BRIDGE` 时用 `src/lib/mock.ts` 的几个虚构词条。开发构建把界面控制器挂在 `window.__zdict` 上，供脚本检查。发布构建：`npm run tauri build`。
+不设 `VITE_INKDICT_BRIDGE` 时用 `src/lib/mock.ts` 的几个虚构词条。开发构建把界面控制器挂在 `window.__inkdict` 上，供脚本检查。发布构建：`npm run tauri build`。
 
 ## 界面
 
@@ -79,8 +79,8 @@ VITE_ZDICT_BRIDGE=http://127.0.0.1:1430 npx vite --port 1421   # 打开 http://l
 ## 基准测试
 
 ```bash
-ZDICT_BENCH=$PWD/out.json ZDICT_BENCH_QUERIES=$PWD/../../oxdata/bench/words.txt \
-ZDICT_BENCH_ENTRIES=$PWD/../../oxdata/bench/entry.txt npm run tauri dev
+INKDICT_BENCH=$PWD/out.json INKDICT_BENCH_QUERIES=$PWD/../../oxdata/bench/words.txt \
+INKDICT_BENCH_ENTRIES=$PWD/../../oxdata/bench/entry.txt npm run tauri dev
 ```
 
-界面逐键输入每个查询、打开每个词条（各取前 300 行，`ZDICT_BENCH_LIMIT` 可改），把"输入到词表画出""打开到词条画出"的耗时写进 `out.json`（`words`、`entry` 两项）后退出。输入文件由 `scripts/bench.py queries` 生成，每行第一列是查询或词条 key。
+界面逐键输入每个查询、打开每个词条（各取前 300 行，`INKDICT_BENCH_LIMIT` 可改），把"输入到词表画出""打开到词条画出"的耗时写进 `out.json`（`words`、`entry` 两项）后退出。输入文件由 `scripts/bench.py queries` 生成，每行第一列是查询或词条 key。

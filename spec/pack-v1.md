@@ -1,10 +1,10 @@
-# ZDict 词典包 v1
+# Inkdict 词典包 v1
 
 状态：草案，2026-10-26。取代 v0 的包格式，不兼容 v0。
 
-打包程序把一部词典的**源目录**（§1）转换成一个 SQLite 文件 `.zdpack`（§2–§4，表结构见 `pack-v1.sql`），读取端只读打开。§5 是读取端查词的规则，两个客户端都按它实现，结果一致。
+打包程序把一部词典的**源目录**（§1）转换成一个 SQLite 文件 `.inkdict`（§2–§4，表结构见 `pack-v1.sql`），读取端只读打开。§5 是读取端查词的规则，两个客户端都按它实现，结果一致。
 
-参考实现：打包程序在 OxDic 仓库 `oxdic/pack/`，读取端是本仓库的 `crates/zdict-core`。
+参考实现：打包程序在 OxDic 仓库 `oxdic/pack/`，读取端是本仓库的 `crates/inkdict-core`。
 
 ## 1. 源目录
 
@@ -24,7 +24,7 @@
 
 | 键 | 必填 | 说明 |
 |---|---|---|
-| `meta.format`、`meta.version` | 是 | `zdict-source`、`1` |
+| `meta.format`、`meta.version` | 是 | `inkdict-source`、`1` |
 | `pack.id` | 是 | 词典 ID：小写字母、数字、`-` |
 | `pack.title` | 是 | 显示名 |
 | `pack.edition`、`pack.license` | 否 | 版本、版权与使用限制 |
@@ -79,9 +79,9 @@ UTF-8，每行一个词条，即 `v1.md` §2 的一棵节点树。行的顺序�
 
 | 项 | 值 |
 |---|---|
-| `PRAGMA application_id` | `0x5A44504B`（ASCII `ZDPK`） |
+| `PRAGMA application_id` | `0x494E4B44`（ASCII `INKD`） |
 | `PRAGMA user_version` | `1` |
-| `meta.format`、`meta.format_version` | `zdict-pack`、`1` |
+| `meta.format`、`meta.format_version` | `inkdict-pack`、`1` |
 
 读取端先检查这几项，不符就拒绝打开。
 

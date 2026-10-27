@@ -1,11 +1,11 @@
 import { isTauri } from './api';
 
-/** Choose .zdpack files with the system dialog; empty when cancelled.
+/** Choose .inkdict files with the system dialog; empty when cancelled.
  *  Only in the app: a browser has no file paths to give. */
 export async function pickPacks(): Promise<string[]> {
   if (!isTauri()) return [];
   const { open } = await import('@tauri-apps/plugin-dialog');
-  const chosen = await open({ multiple: true, directory: false, filters: [{ name: 'ZDict 词典', extensions: ['zdpack'] }] });
+  const chosen = await open({ multiple: true, directory: false, filters: [{ name: 'Inkdict 词典', extensions: ['inkdict'] }] });
   if (!chosen) return [];
   return Array.isArray(chosen) ? chosen : [chosen];
 }

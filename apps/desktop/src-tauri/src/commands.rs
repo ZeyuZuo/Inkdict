@@ -3,10 +3,10 @@
 use std::path::PathBuf;
 
 use tauri::State;
-use zdict_app::{
+use inkdict_app::{
     Added, AppError, Dictionary, EntryView, Library, PackInfo, Result, Settings, Target, WordView,
 };
-use zdict_core::Link;
+use inkdict_core::Link;
 
 use crate::AppState;
 

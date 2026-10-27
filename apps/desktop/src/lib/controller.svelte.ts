@@ -67,7 +67,7 @@ export class Dictionary {
 
   async initialize() {
     this.setTheme(loadTheme(this.storage));
-    window.__zdictPerf = this.samples;
+    window.__inkdictPerf = this.samples;
     const results = await Promise.allSettled([
       this.loadPack(),
       api.settings().then(settings => { this.settings = settings; }),

@@ -1,4 +1,4 @@
-//! ZDict desktop: Tauri commands over `zdict-app` (apps/desktop/README.md).
+//! Inkdict desktop: Tauri commands over `inkdict-app` (apps/desktop/README.md).
 
 // No console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use tauri::Manager;
-use zdict_app::Session;
+use inkdict_app::Session;
 
 /// Shared by every command: configuration, library, and the open dictionary.
 pub struct AppState {
@@ -33,7 +33,7 @@ impl AppState {
     }
 }
 
-/// `--pack <path>`, then `ZDICT_PACK`; Session loads the remembered active pack.
+/// `--pack <path>`, then `INKDICT_PACK`; Session loads the remembered active pack.
 fn pack_path() -> Option<PathBuf> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -44,7 +44,7 @@ fn pack_path() -> Option<PathBuf> {
             return Some(PathBuf::from(path));
         }
     }
-    std::env::var_os("ZDICT_PACK").map(PathBuf::from)
+    std::env::var_os("INKDICT_PACK").map(PathBuf::from)
 }
 
 fn main() {
@@ -54,7 +54,7 @@ fn main() {
             let config_path = app.path().app_config_dir()?.join("config.json");
             let (session, error) = Session::start(Some(config_path), pack_path());
             if let Some(error) = error {
-                eprintln!("zdict: {error}");
+                eprintln!("inkdict: {error}");
             }
             let state = AppState {
                 session: Arc::new(RwLock::new(session)),
@@ -81,5 +81,5 @@ fn main() {
             bench::bench_log,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running the ZDict desktop app");
+        .expect("error while running the Inkdict desktop app");
 }

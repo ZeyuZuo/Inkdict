@@ -13,8 +13,8 @@ export function apiError(error: unknown): ApiError {
 async function command<K extends keyof Commands>(name: K, args: Commands[K][0]): Promise<Commands[K][1]> {
   try {
     if (isTauri()) return await invoke<Commands[K][1]>(name, args);
-    // Browser development against real data: `zdict serve` (crates/zdict-cli).
-    const bridge = import.meta.env.VITE_ZDICT_BRIDGE as string | undefined;
+    // Browser development against real data: `inkdict serve` (crates/inkdict-cli).
+    const bridge = import.meta.env.VITE_INKDICT_BRIDGE as string | undefined;
     if (bridge) {
       const response = await fetch(`${bridge}/${name}`, { method: 'POST', body: JSON.stringify(args ?? {}) });
       const value = await response.json();

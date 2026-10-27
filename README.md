@@ -1,8 +1,8 @@
-# ZDict
+# Inkdict
 
-ZDict 是一套开放的词典格式和配套应用。这个仓库只放协议和软件：
+Inkdict 是一套开放的词典格式和配套应用。这个仓库只放协议和软件：
 
-- **协议**：词条内容、类型表、主题，以及词典包 `.zdpack` 的格式；
+- **协议**：词条内容、类型表、主题，以及词典包 `.inkdict` 的格式；
 - **软件**：一个共享的 Rust 核心，以及桌面、Android 两个客户端（不做 Web 版，没有后端）。
 
 词典数据（正文、音频、图片）不放在这里。每本词典由各自的数据仓库转换和打包；Oxford 数据在 OxDic 仓库，那里有抓取、转换、打包工具。
@@ -12,14 +12,14 @@ ZDict 是一套开放的词典格式和配套应用。这个仓库只放协议�
 ```text
 spec/               协议 v1（草案）
   v1.md             内容格式、类型表、主题、语言、链接、资源引用
-  pack-v1.md        源目录、打包、词典包 .zdpack（SQLite）的格式、词表规则
-  pack-v1.sql       .zdpack 的表结构
+  pack-v1.md        源目录、打包、词典包 .inkdict（SQLite）的格式、词表规则
+  pack-v1.sql       .inkdict 的表结构
   samples/en-zh/    一部虚构英汉词典的完整源目录
 crates/
-  zdict-core/       Rust 核心：读包、词表（前缀 / 含有 / 拼写接近）、词条解析、资源、链接、主题层叠与渲染树
-  zdict-html/       把渲染树写成 HTML，给出主题 CSS（桌面端用）
-  zdict-app/        桌面端的应用逻辑：词典库、设置、命令，与 Tauri 无关
-  zdict-cli/        命令行工具 zdict：info/words/show/render/themes/serve，基准测试与纠错评测
+  inkdict-core/       Rust 核心：读包、词表（前缀 / 含有 / 拼写接近）、词条解析、资源、链接、主题层叠与渲染树
+  inkdict-html/       把渲染树写成 HTML，给出主题 CSS（桌面端用）
+  inkdict-app/        桌面端的应用逻辑：词典库、设置、命令，与 Tauri 无关
+  inkdict-cli/        命令行工具 inkdict：info/words/show/render/themes/serve，基准测试与纠错评测
 apps/
   desktop/          桌面端（Tauri 2 + Svelte 5，界面跑在 WebView 里）
   android/          Android（Kotlin + Jetpack Compose，未开始）

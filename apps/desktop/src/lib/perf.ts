@@ -17,4 +17,4 @@ export function summarize(samples: readonly number[]) {
   return { count: samples.length, p50: percentile(samples, 0.5), p95: percentile(samples, 0.95), max: Math.max(0, ...samples) };
 }
 
-declare global { interface Window { __zdictPerf: Samples } }
+declare global { interface Window { __inkdictPerf: Samples } }

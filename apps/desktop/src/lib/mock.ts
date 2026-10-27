@@ -1,11 +1,11 @@
-// Browser-only stand-in for the Rust commands (no Tauri, no `zdict serve`):
+// Browser-only stand-in for the Rust commands (no Tauri, no `inkdict serve`):
 // invented entries, so the UI can be worked on without dictionary data.
 import type { Commands, Library, Link, PackInfo, Settings, Word } from './types';
 import { renderMock, rows, words } from './mock-data';
 import { themeCss } from './mock-theme';
 
 let settings: Settings = { hide_pronunciation: false, hide_examples: false, font_scale: 1 };
-const path = '/demo/invented.zdpack';
+const path = '/demo/invented.inkdict';
 const info: PackInfo = {
   id: 'invented-demo', title: '小小造词集', entries: words.length, source_lang: 'en', target_langs: ['zh-Hans'],
   switches: { pronunciation: true, example: true },

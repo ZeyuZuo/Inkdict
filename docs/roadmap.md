@@ -6,7 +6,7 @@
 
 | 编号 | 决策 | 理由 |
 | --- | --- | --- |
-| D1 | 词典包用 SQLite（`.zdpack`） | 随机读取、前缀检索、FTS5 都是现成的；Android 和桌面都能直接读 |
+| D1 | 词典包用 SQLite（`.inkdict`） | 随机读取、前缀检索、FTS5 都是现成的；Android 和桌面都能直接读 |
 | D2 | 共享 Rust 核心，各端只写界面 | 检索、排序、纠错、主题计算只实现一次，两端结果一致 |
 | D3 | Android 用 Kotlin + Compose，经 UniFFI 调用核心 | 原生手感、启动快、能接系统选词菜单 |
 | D4 | 桌面用 Tauri 2，界面跑在系统 WebView 里 | 安装包小；不必为三个桌面系统各写一套界面 |
@@ -18,12 +18,12 @@
 
 ### M1 Rust 核心：读包与查词
 
-- [x] 打开 `.zdpack`，校验标识和版本，读取 meta、类型表、主题、zstd 字典
+- [x] 打开 `.inkdict`，校验标识和版本，读取 meta、类型表、主题、zstd 字典
 - [x] 按 key 取词条并解析
 - [x] 联想：`norm` 与 Python 参考实现逐字一致，排序、去重一致
 - [x] 全文检索：`fts_query` 一致，rowid 解码
 - [x] 资源 URL、锚点编号、链接回退
-- [x] 命令行工具 `zdict`（`suggest`/`search`/`show`），用于手动验证和基准测试
+- [x] 命令行工具 `inkdict`（`suggest`/`search`/`show`），用于手动验证和基准测试
 
 退出条件：对一组固定查询，与 Python 参考读取器的输出完全一致；联想 p95 不高于 Python 版本。
 
@@ -51,7 +51,7 @@
 | 纠错，2,000 个生成的拼写错误 | top-1 86.6%，top-5 97.8%；p50 0.46 ms，p95 0.61 ms |
 | 纠错索引 | 74,077 个检索键，首次使用时构建约 42 ms |
 
-允许的编辑距离随输入长度变化：1–2 个字符只认精确匹配，3–4 个字符 1 处，5 个字符起 2 处。距离相同时，字母相同的候选（相邻字母颠倒）排前面，再按检索排序值。生成和评测：`scripts/bench.py queries`，`zdict eval correct oxdata/bench/typos.tsv`。
+允许的编辑距离随输入长度变化：1–2 个字符只认精确匹配，3–4 个字符 1 处，5 个字符起 2 处。距离相同时，字母相同的候选（相邻字母颠倒）排前面，再按检索排序值。生成和评测：`scripts/bench.py queries`，`inkdict eval correct oxdata/bench/typos.tsv`。
 
 ### M3 桌面
 
@@ -72,12 +72,12 @@
 
 ### M4 Android
 
-- [ ] UniFFI 绑定（`crates/zdict-ffi`），Compose 渲染器
+- [ ] UniFFI 绑定（`crates/inkdict-ffi`），Compose 渲染器
 - [ ] 下载正文包；媒体在线播放并缓存，或下载媒体包
 - [ ] 系统选词菜单 `PROCESS_TEXT`、分享查词
 
 ### M5 协议通用化
 
 - [ ] 接入第二本词典（非英汉），按结果修订为 spec v1
-- [ ] 固定检索键的 Unicode 版本：v1 的 `meta` 已记录 `unicode_version`（Oxford 包 14.0.0），但 Rust 核心仍用更新的 Unicode 表、不按它处理。Unicode 14 已分配的字符只有 U+1171E 结果不同；之后新增的字符在查询里会被保留而查不到（`crates/zdict-core/src/text.rs` 模块说明）
-- [ ] 可选：把打包器移植为 `zdict pack`，数据仓库不再依赖 Python
+- [ ] 固定检索键的 Unicode 版本：v1 的 `meta` 已记录 `unicode_version`（Oxford 包 14.0.0），但 Rust 核心仍用更新的 Unicode 表、不按它处理。Unicode 14 已分配的字符只有 U+1171E 结果不同；之后新增的字符在查询里会被保留而查不到（`crates/inkdict-core/src/text.rs` 模块说明）
+- [ ] 可选：把打包器移植为 `inkdict pack`，数据仓库不再依赖 Python

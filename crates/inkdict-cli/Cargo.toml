@@ -1,0 +1,18 @@
+[package]
+name = "inkdict-cli"
+description = "Command-line dictionary lookup and benchmarks for Inkdict packs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "inkdict"
+path = "src/main.rs"
+
+[dependencies]
+inkdict-core = { path = "../inkdict-core" }
+clap = { version = "4", features = ["derive", "env"] }
+serde_json = "1"
+anyhow = "1"
+tiny_http = "0.12"
+inkdict-app = { path = "../inkdict-app" }

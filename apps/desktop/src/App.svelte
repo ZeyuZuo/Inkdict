@@ -20,7 +20,7 @@
   onMount(() => {
     dictionary.view = () => pane?.view() ?? { top: 0, tabs: [] };
     // Development builds: the controller for scripted checks in a browser.
-    if (import.meta.env.DEV) (window as unknown as { __zdict: Dictionary }).__zdict = dictionary;
+    if (import.meta.env.DEV) (window as unknown as { __inkdict: Dictionary }).__inkdict = dictionary;
     // One column below this width: the list drops down under the search box.
     const narrow = matchMedia('(max-width: 720px)');
     const update = () => { dictionary.narrow = narrow.matches; };

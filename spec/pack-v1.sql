@@ -1,11 +1,11 @@
--- ZDict 词典包 v1（.zdpack）的表结构。一个词典 = 一个文件。
+-- Inkdict 词典包 v1（.inkdict）的表结构。一个词典 = 一个文件。
 -- 打包程序把源目录（pack-v1.md §1，示例 samples/en-zh/）转换成这里的表；读取端只读打开。
 
-PRAGMA application_id = 0x5A44504B;   -- 'ZDPK'
+PRAGMA application_id = 0x494E4B44;   -- 'INKD'
 PRAGMA user_version = 1;              -- 格式版本
 
 -- 包信息（pack-v1.md §2.2）。键：
---   format = zdict-pack        format_version = 1
+--   format = inkdict-pack        format_version = 1
 --   id, title, edition, license
 --   source_lang = en           target_langs = ["zh-Hans"]（单语为 []）
 --   themes = ["default"]（第一个是默认主题）

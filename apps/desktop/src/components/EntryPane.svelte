@@ -95,7 +95,7 @@
   {:else}
     <div class="title-page">
       <h1>还没有词典</h1>
-      <p>添加一部 .zdpack 词典后就可以查词。</p>
+      <p>添加一部 .inkdict 词典后就可以查词。</p>
       <button class="button" onclick={onadd}>添加词典…</button>
     </div>
   {/if}

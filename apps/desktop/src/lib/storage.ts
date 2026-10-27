@@ -1,6 +1,6 @@
 // Per-viewer conveniences only; settings live in the app's config.json (Rust).
 export interface StorageLike { getItem(key: string): string | null; setItem(key: string, value: string): void }
-export const keys = { theme: 'zdict.theme' };
+export const keys = { theme: 'inkdict.theme' };
 
 export function browserStorage(): StorageLike | undefined {
   try { return window.localStorage; } catch { return undefined; }

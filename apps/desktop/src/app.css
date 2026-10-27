@@ -1,4 +1,4 @@
-/* ZDict desktop, after the approved design (Main / Narrow / Library / Dark):
+/* Inkdict desktop, after the approved design (Main / Narrow / Library / Dark):
    a sidebar with the search box, the word list and the open dictionary;
    the entry beside it. Entry colours and fonts come from the pack theme
    (theme_css, --c-* and --font-*); the tokens below are the window itself. */

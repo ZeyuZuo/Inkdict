@@ -1630,6 +1630,68 @@ dependencies = [
 ]
 
 [[package]]
+name = "inkdict-app"
+version = "0.1.0"
+dependencies = [
+ "inkdict-core",
+ "inkdict-html",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "inkdict-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "inkdict-app",
+ "inkdict-core",
+ "serde_json",
+ "tiny_http",
+]
+
+[[package]]
+name = "inkdict-core"
+version = "0.1.0"
+dependencies = [
+ "caseless",
+ "fst",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.21",
+ "toml 1.1.8+spec-1.1.0",
+ "unicode-normalization",
+ "unicode-properties",
+ "zstd",
+]
+
+[[package]]
+name = "inkdict-desktop"
+version = "0.1.0"
+dependencies = [
+ "inkdict-app",
+ "inkdict-core",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+]
+
+[[package]]
+name = "inkdict-html"
+version = "0.1.0"
+dependencies = [
+ "inkdict-core",
+ "serde_json",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4676,68 +4738,6 @@ dependencies = [
  "quote",
  "syn 3.0.9",
  "synstructure",
-]
-
-[[package]]
-name = "zdict-app"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tempfile",
- "zdict-core",
- "zdict-html",
-]
-
-[[package]]
-name = "zdict-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "serde_json",
- "tiny_http",
- "zdict-app",
- "zdict-core",
-]
-
-[[package]]
-name = "zdict-core"
-version = "0.1.0"
-dependencies = [
- "caseless",
- "fst",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.21",
- "toml 1.1.8+spec-1.1.0",
- "unicode-normalization",
- "unicode-properties",
- "zstd",
-]
-
-[[package]]
-name = "zdict-desktop"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "zdict-app",
- "zdict-core",
-]
-
-[[package]]
-name = "zdict-html"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "zdict-core",
 ]
 
 [[package]]

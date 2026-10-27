@@ -15,15 +15,15 @@ describe('Tauri command contract', () => {
   it('passes every command and argument using contract names', async () => {
     const link = { entry: 'moonjar', anchor_type: 'wfg', text: '词族' };
     await api.packInfo(); await api.library();
-    await api.addPacks(['/a.zdpack', '/b.zdpack']); await api.removePack('/a.zdpack');
-    await api.movePack('/b.zdpack', 0); await api.usePack('/b.zdpack');
+    await api.addPacks(['/a.inkdict', '/b.inkdict']); await api.removePack('/a.inkdict');
+    await api.movePack('/b.inkdict', 0); await api.usePack('/b.inkdict');
     await api.words('moon'); await api.words('moon', 5);
     await api.entry('moonjar'); await api.follow('moonjar', link);
     await api.settings(); await api.setSettings(settings); await api.themeCss();
     expect(vi.mocked(invoke).mock.calls).toEqual([
       ['pack_info', undefined], ['library', undefined],
-      ['add_packs', { paths: ['/a.zdpack', '/b.zdpack'] }], ['remove_pack', { path: '/a.zdpack' }],
-      ['move_pack', { path: '/b.zdpack', index: 0 }], ['use_pack', { path: '/b.zdpack' }],
+      ['add_packs', { paths: ['/a.inkdict', '/b.inkdict'] }], ['remove_pack', { path: '/a.inkdict' }],
+      ['move_pack', { path: '/b.inkdict', index: 0 }], ['use_pack', { path: '/b.inkdict' }],
       ['words', { text: 'moon', limit: 30 }], ['words', { text: 'moon', limit: 5 }],
       ['entry', { key: 'moonjar' }], ['follow', { current: 'moonjar', link }],
       ['settings', undefined], ['set_settings', { settings }], ['theme_css', undefined],

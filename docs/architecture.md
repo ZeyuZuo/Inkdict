@@ -2,15 +2,15 @@
 
 ## 一句话
 
-`zdict-core` 是一个**库**，不是服务器。两个客户端都把它编进自己的程序里，只有界面不同。没有 Web 版，也没有后端（2026-10-25 决定，见 `docs/roadmap.md` D7）。
+`inkdict-core` 是一个**库**，不是服务器。两个客户端都把它编进自己的程序里，只有界面不同。没有 Web 版，也没有后端（2026-10-25 决定，见 `docs/roadmap.md` D7）。
 
 ```text
                   spec/（协议）
                       │
-          crates/zdict-core（Rust 库）
-   读 .zdpack · 词表 · 解压解析 · 主题计算 · 渲染树
+          crates/inkdict-core（Rust 库）
+   读 .inkdict · 词表 · 解压解析 · 主题计算 · 渲染树
              ┌────────┴─────────┐
-          UniFFI      crates/zdict-html + zdict-app
+          UniFFI      crates/inkdict-html + inkdict-app
              │                  │
        apps/android        apps/desktop
       Kotlin + Compose   Tauri 2：Rust + WebView 界面（Svelte）
@@ -21,7 +21,7 @@
 
 | 端 | 查词在哪里发生 |
 | --- | --- |
-| Android | 手机上：核心直接读本地 `.zdpack` |
+| Android | 手机上：核心直接读本地 `.inkdict` |
 | 桌面 | 电脑上：Tauri 的 Rust 部分调用核心，WebView 里的界面只负责显示 |
 
 两端都不需要服务器，媒体除外：音频和图片按资源源模板从 R2 读取，可以缓存或另下媒体包。桌面界面用 HTML/TS 写，但只运行在 Tauri 的 WebView 里，不对外部署。
@@ -40,9 +40,9 @@
 
 ## 渲染器
 
-只维护两套：Compose（Android）和 HTML（桌面端 WebView，`crates/zdict-html`）。两者都只消费核心输出的渲染树。颜色、字号、间距等设计参数来自主题文件，不在各端代码里写死。界面只通过类型表里的 role 接触词条结构（如音标、例句的显示开关），不认词典自己的类型名。
+只维护两套：Compose（Android）和 HTML（桌面端 WebView，`crates/inkdict-html`）。两者都只消费核心输出的渲染树。颜色、字号、间距等设计参数来自主题文件，不在各端代码里写死。界面只通过类型表里的 role 接触词条结构（如音标、例句的显示开关），不认词典自己的类型名。
 
-桌面端的应用逻辑（词典库、设置、命令）在 `crates/zdict-app`，Tauri 层（`apps/desktop/src-tauri`）和 `zdict serve`（浏览器开发用）共用它。
+桌面端的应用逻辑（词典库、设置、命令）在 `crates/inkdict-app`，Tauri 层（`apps/desktop/src-tauri`）和 `inkdict serve`（浏览器开发用）共用它。
 
 ## 一致性
 
@@ -68,7 +68,7 @@ Python 参考实现（OxDic 仓库的 `oxdic/pack/reader.py`、`oxdic/preview.py
 
 | 文件 | 用途 |
 | --- | --- |
-| `oxdata/oalecd10.zdpack` | Oxford 词典包，核心的读包、词表、渲染测试 |
+| `oxdata/oalecd10.inkdict` | Oxford 词典包，核心的读包、词表、渲染测试 |
 | `oxdata/entries.jsonl` | 全部词条内容（未压缩），渲染树和解码测试 |
 | `oxdata/examples/*.json` | 5 个金样例词条 |
 | `oxdata/*_report.json`、`SHA256SUMS` | 构建报告与校验和 |

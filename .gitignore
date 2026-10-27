@@ -14,7 +14,7 @@ local.properties
 *.aab
 
 # Dictionary data never goes into this repository (packs, databases, media)
-*.zdpack
+*.inkdict
 *.sqlite
 *.sqlite3
 *.db

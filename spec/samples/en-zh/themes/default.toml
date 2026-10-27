@@ -1,7 +1,7 @@
 # 默认主题：词条怎么显示（spec/v1.md §4）。
 
 [meta]
-format = "zdict-theme"
+format = "inkdict-theme"
 version = 1
 name = "默认"
 

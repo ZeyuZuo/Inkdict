@@ -2,7 +2,7 @@
 """Write the reference outputs the Rust core is checked against.
 
 Runs the Python reference reader of the OxDic data repository over
-oxdata/oalecd10.zdpack and writes JSON into oxdata/golden/ (git-ignored:
+oxdata/oalecd10.inkdict and writes JSON into oxdata/golden/ (git-ignored:
 the outputs contain dictionary text).
 
     path/to/OxDic/.venv/bin/python scripts/make-golden.py [path/to/OxDic]
@@ -22,7 +22,7 @@ import unicodedata
 
 ROOT = Path(__file__).resolve().parent.parent
 OXDATA = ROOT / 'oxdata'
-PACK = OXDATA / 'oalecd10.zdpack'
+PACK = OXDATA / 'oalecd10.inkdict'
 EDGES = [
     'Café', 'CAFÉ', 'cafe', 'mother-in-law', 'mother in law', '&', '%', '  ', '', 'ˈæpl',
     'straße', 'STRASSE', 'ﬁ', 'ﬀ', 'Ⅻ', '①', 'Ａｐｐｌｅ', 'résumé', 'naïve', 'İstanbul', 'ǅ',

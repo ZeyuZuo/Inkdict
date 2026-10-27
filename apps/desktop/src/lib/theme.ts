@@ -1,8 +1,8 @@
 export function installTheme(css: string): void {
-  let style = document.getElementById('zdict-entry-theme') as HTMLStyleElement | null;
+  let style = document.getElementById('inkdict-entry-theme') as HTMLStyleElement | null;
   if (!style) {
     style = document.createElement('style');
-    style.id = 'zdict-entry-theme';
+    style.id = 'inkdict-entry-theme';
     document.head.append(style);
   }
   style.textContent = css;
@@ -12,10 +12,10 @@ export function installTheme(css: string): void {
 /** Lay out a hidden line in every theme font (Latin, IPA, CJK) right away,
  *  so the first entry does not pay for font loading (it took ~300 ms). */
 function warmFonts(css: string): void {
-  document.getElementById('zdict-font-warmup')?.remove();
+  document.getElementById('inkdict-font-warmup')?.remove();
   const tokens = [...new Set([...css.matchAll(/--font-([\w-]+):/g)].map(match => match[1]))];
   const box = document.createElement('div');
-  box.id = 'zdict-font-warmup';
+  box.id = 'inkdict-font-warmup';
   box.setAttribute('aria-hidden', 'true');
   box.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none';
   for (const token of tokens) {

@@ -18,7 +18,7 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parent.parent
-PACK = ROOT / 'oxdata' / 'oalecd10.zdpack'
+PACK = ROOT / 'oxdata' / 'oalecd10.inkdict'
 BENCH = ROOT / 'oxdata' / 'bench'
 KINDS = ('words', 'entry')
 
@@ -93,7 +93,7 @@ def statistics(samples, total_seconds):
 
 
 def run(pack, kind, path, repeat, as_json):
-    """Warm up, then time the same reader calls as `zdict bench`."""
+    """Warm up, then time the same reader calls as `inkdict bench`."""
     queries = [line.split('\t', 1)[0] if kind == 'words' else line
                for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
     if not queries:

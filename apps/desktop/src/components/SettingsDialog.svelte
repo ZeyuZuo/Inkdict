@@ -95,10 +95,10 @@
       {/each}
       <div class="add">
         {#if isTauri()}
-          <button class="button" onclick={onadd}>添加词典…</button><span class="hint">可以一次选择多个 .zdpack 文件</span>
+          <button class="button" onclick={onadd}>添加词典…</button><span class="hint">可以一次选择多个 .inkdict 文件</span>
         {:else}
           <!-- In a browser there is no file dialog: type the path the bridge can open. -->
-          <input bind:value={typed} placeholder="词典文件路径（.zdpack）" aria-label="词典文件路径"
+          <input bind:value={typed} placeholder="词典文件路径（.inkdict）" aria-label="词典文件路径"
             onkeydown={event => { if (event.key === 'Enter' && typed.trim()) { onaddpath(typed.trim()); typed = ''; } }} />
           <button class="button" disabled={!typed.trim()} onclick={() => { onaddpath(typed.trim()); typed = ''; }}>添加</button>
         {/if}
