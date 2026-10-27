@@ -482,7 +482,6 @@ mod tests {
         word.link = Some(Link {
             entry: Some("k\"2".into()),
             anchor: None,
-            anchor_type: None,
             text: "pear".into(),
         });
         let app = html(&word, Markup::App);

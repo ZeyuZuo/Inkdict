@@ -29,9 +29,8 @@ function list(text: string, limit: number): Word[] {
 function follow(current: string, link: Link): Commands['follow'][1] {
   if (!words.some(w => w.key === current)) return fail('not_found', '当前词条不存在');
   const target = words.find(w => w.key === link.entry);
-  const number = link.anchor === 'moment' ? 2 : link.anchor === 'sense' ? 1 : null;
-  if (target) return { kind: 'entry', key: target.key, focus: number !== null ? { kind: 'anchor', number }
-    : link.anchor_type === 'wfg' ? { kind: 'word_family' } : { kind: 'top' } };
+  const number = { sense: 1, moment: 2, family: 3 }[link.anchor ?? ''] ?? null;
+  if (target) return { kind: 'entry', key: target.key, focus: number !== null ? { kind: 'anchor', number } : { kind: 'top' } };
   if (number !== null) return { kind: 'entry', key: current, focus: { kind: 'anchor', number } };
   return { kind: 'lookup', text: link.text };
 }

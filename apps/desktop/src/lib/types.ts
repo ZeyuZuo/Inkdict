@@ -41,10 +41,9 @@ export interface Entry {
 export interface Link {
   entry?: string;
   anchor?: string;
-  anchor_type?: string;
   text: string;
 }
-export type Focus = { kind: 'top' } | { kind: 'anchor'; number: number } | { kind: 'word_family' };
+export type Focus = { kind: 'top' } | { kind: 'anchor'; number: number };
 export type LinkTarget = { kind: 'entry'; key: string; focus: Focus } | { kind: 'lookup'; text: string };
 
 export interface Settings {

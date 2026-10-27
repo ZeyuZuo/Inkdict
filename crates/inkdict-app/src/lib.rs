@@ -102,7 +102,6 @@ pub enum Target {
 pub enum FocusView {
     Top,
     Anchor { number: u32 },
-    WordFamily,
 }
 
 /// An open pack with its registry and the theme stack for the settings.
@@ -207,7 +206,6 @@ impl Dictionary {
                 focus: match focus {
                     Focus::Top => FocusView::Top,
                     Focus::Anchor(number) => FocusView::Anchor { number },
-                    Focus::WordFamily => FocusView::WordFamily,
                 },
             },
             LinkTarget::Lookup(text) => Target::Lookup { text },

@@ -306,7 +306,6 @@ fn sample_anchors_links_and_missing_target_fallbacks() {
         let link = Link {
             entry: target.map(str::to_owned),
             anchor: anchor.map(str::to_owned),
-            anchor_type: None,
             text: "café".into(),
         };
         assert_eq!(

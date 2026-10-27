@@ -70,11 +70,11 @@ export function renderMock(key: string, settings: Settings): string | null {
       <div>A quiet moment to notice something small.</div>
       <div lang="zh-CN" style="color:var(--c-muted)">留意微小事物的片刻。</div>
     </section>
-    <aside class="dx-word_family" style="padding:1em 1.2em;background:var(--c-box);border-radius:.5em">
+    <aside id="family" data-anchor="3" style="padding:1em 1.2em;background:var(--c-box);border-radius:.5em">
       <div class="dx-title">词族</div><strong>${w.family}</strong> <span style="color:var(--c-muted)">衍生形式 · 示例</span>
     </aside>
     <div style="margin-top:1.5em">相关词 ${link(next.word, { entry: next.key })}
-      · ${link('查看词族', { entry: w.key, anchor_type: 'wfg' })}
+      · ${link('查看词族', { entry: w.key, anchor: 'family' })}
       · ${link('跳到短语', { entry: w.key, anchor: 'moment' })}
       · ${link('fernlight', {})}</div>
     ${w.key === 'moonjar' ? `<figure style="margin:1.5em 0 0"><img width="160" height="80" alt="想象月亮的简笔图" src="data:image/png;base64,AA==" data-fallback="${image}"/><figcaption style="color:var(--c-muted);font-size:.8em">示意图 · 本地生成</figcaption></figure>` : ''}

@@ -157,7 +157,6 @@ fn follows_links_and_falls_back_to_lookup() {
     let lookup = Link {
         entry: None,
         anchor: None,
-        anchor_type: None,
         text: "pear".into(),
     };
     assert_eq!(
@@ -169,7 +168,6 @@ fn follows_links_and_falls_back_to_lookup() {
     let to_apple = Link {
         entry: Some(apple.clone()),
         anchor: None,
-        anchor_type: None,
         text: String::new(),
     };
     let json = serde_json::to_value(dictionary.follow(&apple, &to_apple).unwrap()).unwrap();
@@ -301,7 +299,6 @@ fn sample_follow_links_and_fallbacks() {
         let link = Link {
             entry: entry.map(str::to_owned),
             anchor: anchor.map(str::to_owned),
-            anchor_type: None,
             text: text.into(),
         };
         let actual = dictionary.follow(from, &link).unwrap();

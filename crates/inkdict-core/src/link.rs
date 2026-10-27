@@ -51,8 +51,6 @@ pub enum Focus {
     Top,
     /// The node with this anchor number.
     Anchor(u32),
-    /// The entry's first `word_family` node (`anchor_type = wfg`).
-    WordFamily,
 }
 
 /// What a `link`-role node points at, as written in the content.
@@ -62,8 +60,6 @@ pub struct Link {
     pub entry: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anchor_type: Option<String>,
     /// The node's text, for the lookup fallback.
     pub text: String,
 }
@@ -74,7 +70,6 @@ impl Link {
         Link {
             entry: attr("entry"),
             anchor: attr("anchor"),
-            anchor_type: attr("anchor_type"),
             text: display(&plain(node)),
         }
     }
@@ -87,9 +82,8 @@ impl Pack {
     }
 
     /// Where `link` leads from `current` (spec/v1.md §6), falling back in order
-    /// when a target is not in the pack: entry + anchor → that entry (its
-    /// word family for `wfg`) → the anchor in the current entry → a lookup
-    /// of the link's text.
+    /// when a target is not in the pack: entry + anchor → that entry's top →
+    /// the anchor in the current entry → a lookup of the link's text.
     pub fn resolve(&self, current: &Entry, link: &Link) -> Result<LinkTarget> {
         let anchor = link.anchor.as_deref();
         if let Some(key) = link.entry.as_deref() {
@@ -105,7 +99,6 @@ impl Pack {
             if let Some(target) = target {
                 let focus = match anchor.and_then(|id| target.anchor_number(id)) {
                     Some(number) => Focus::Anchor(number),
-                    None if link.anchor_type.as_deref() == Some("wfg") => Focus::WordFamily,
                     None => Focus::Top,
                 };
                 return Ok(LinkTarget::Entry {
@@ -191,7 +184,7 @@ mod tests {
             (r#""entry":"run""#, entry("run", Focus::Top)),
             (
                 r#""entry":"run","anchor_type":"wfg""#,
-                entry("run", Focus::WordFamily),
+                entry("run", Focus::Top),
             ),
             (r#""entry":"run","anchor":"gone""#, entry("run", Focus::Top)),
             (r#""anchor":"walk-1""#, entry("walk", Focus::Anchor(1))),

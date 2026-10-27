@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('Tauri command contract', () => {
   it('passes every command and argument using contract names', async () => {
-    const link = { entry: 'moonjar', anchor_type: 'wfg', text: '词族' };
+    const link = { entry: 'moonjar', anchor: 'family', text: '词族' };
     await api.packInfo(); await api.library();
     await api.addPacks(['/a.inkdict', '/b.inkdict']); await api.removePack('/a.inkdict');
     await api.movePack('/b.inkdict', 0); await api.usePack('/b.inkdict');

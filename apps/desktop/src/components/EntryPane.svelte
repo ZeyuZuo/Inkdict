@@ -44,8 +44,7 @@
           pane.scrollTop = focus.top;
         } else if (focus.kind === 'top') pane.scrollTop = 0;
         else {
-          const selector = focus.kind === 'word_family' ? '.dx-word_family' : `[data-anchor="${focus.number}"]`;
-          highlight = content.querySelector<HTMLElement>(selector);
+          highlight = content.querySelector<HTMLElement>(`[data-anchor="${focus.number}"]`);
           if (highlight) {
             // The anchor may sit in a tab that is not open, or a folded box.
             tabs.reveal(highlight, content);
