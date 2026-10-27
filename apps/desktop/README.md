@@ -41,3 +41,46 @@ Tauri 2。查词由 Tauri 的 Rust 部分（`src-tauri/`）直接调用 `zdict-c
 - 链接是 `<a href="#" class="dx-link" data-link="<link 的 JSON，HTML 转义>">`，点击后取 `dataset.link` 解析成 JSON 交给 `follow`（并阻止默认跳转）。
 
 CSS：`theme_css` 只给主题的变量和 `.dx-*` 规则；页面自己定义 `--page`、`--card`（箭头图标用 `--card` 镂空）和正文字号。
+
+## 开发
+
+```bash
+npm install
+ZDICT_PACK=$PWD/../../oxdata/oalecd10.zdpack npm run tauri dev   # 真实窗口（WebKitGTK）；ZDICT_PACK 可省，库记在配置里
+npm run check && npm test                                    # svelte-check、vitest
+```
+
+不开窗口时在浏览器里调界面：
+
+```bash
+cargo build --release -p zdict-cli
+../../target/release/zdict --pack ../../oxdata/oalecd10.zdpack serve --port 1430
+VITE_ZDICT_BRIDGE=http://127.0.0.1:1430 npx vite --port 1421   # 打开 http://localhost:1421
+```
+
+不设 `VITE_ZDICT_BRIDGE` 时用 `src/lib/mock.ts` 的几个虚构词条。开发构建把界面控制器挂在 `window.__zdict` 上，供脚本检查。发布构建：`npm run tauri build`。
+
+## 界面
+
+- 左栏：搜索框、词表（前缀匹配；"含有 …"；无结果时"拼写接近"），底部是词典切换和设置。宽窗口里首行的词条随输入显示，↑↓ 即时显示所选行，Enter 或点击把它记为一次历史。
+- 窗口窄于 720 px：单栏，词表从搜索框下拉，选中后收起；顶栏有"固定在最前"。
+- 词条：词性标签页吸顶；要打开的锚点在未选中的标签页里时切过去；从链接到达的词条顶部显示"‹ 来源词"。
+- 历史记录词条、滚动位置、各标签组的选中页和搜索框内容。
+
+| 按键 | 作用 |
+| --- | --- |
+| 直接打字 | 输入到搜索框 |
+| Ctrl+L / Ctrl+F、Esc | 选中搜索框；搜索框里按 Esc 清空（窄窗口先收起下拉） |
+| ↑ ↓、Enter | 在词表里移动、打开 |
+| Alt+← / Alt+→、鼠标侧键 | 后退 / 前进 |
+| Ctrl+, | 设置 |
+| Ctrl+Shift+D | 延迟统计（最近 200 次） |
+
+## 基准测试
+
+```bash
+ZDICT_BENCH=$PWD/out.json ZDICT_BENCH_QUERIES=$PWD/../../oxdata/bench/words.txt \
+ZDICT_BENCH_ENTRIES=$PWD/../../oxdata/bench/entry.txt npm run tauri dev
+```
+
+界面逐键输入每个查询、打开每个词条（各取前 300 行，`ZDICT_BENCH_LIMIT` 可改），把"输入到词表画出""打开到词条画出"的耗时写进 `out.json`（`words`、`entry` 两项）后退出。输入文件由 `scripts/bench.py queries` 生成，每行第一列是查询或词条 key。
