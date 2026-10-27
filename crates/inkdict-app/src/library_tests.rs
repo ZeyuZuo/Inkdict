@@ -1,13 +1,6 @@
 use super::*;
 
-fn oxford() -> Option<PathBuf> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../oxdata/oalecd10.inkdict");
-    if !path.is_file() {
-        eprintln!("skipped: {} missing", path.display());
-        return None;
-    }
-    Some(path.canonicalize().unwrap())
-}
+use crate::tests::sample_pack;
 
 fn copy_pack(source: &Path, dir: &Path, name: &str) -> PathBuf {
     let path = dir.join(name);
@@ -57,7 +50,7 @@ fn config_discards_an_active_path_outside_the_library() {
 
 #[test]
 fn add_activates_first_valid_pack_and_rejects_duplicates_and_invalid_files() {
-    let Some(pack) = oxford() else { return };
+    let pack = sample_pack().canonicalize().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let config_path = dir.path().join("config.json");
     let invalid = dir.path().join("text.inkdict");
@@ -82,7 +75,7 @@ fn add_activates_first_valid_pack_and_rejects_duplicates_and_invalid_files() {
     assert_eq!(added.library.packs.len(), 1);
     assert_eq!(added.library.packs[0].path, pack);
     assert!(added.library.packs[0].title.is_some());
-    assert_eq!(added.library.packs[0].entries, Some(39960));
+    assert_eq!(added.library.packs[0].entries, Some(6));
     assert_eq!(
         added.library.packs[0].bytes,
         Some(std::fs::metadata(&pack).unwrap().len())
@@ -101,7 +94,7 @@ fn add_activates_first_valid_pack_and_rejects_duplicates_and_invalid_files() {
 #[cfg(unix)]
 #[test]
 fn add_and_use_compare_symlink_targets() {
-    let Some(pack) = oxford() else { return };
+    let pack = sample_pack().canonicalize().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let alias = dir.path().join("alias.inkdict");
     std::os::unix::fs::symlink(&pack, &alias).unwrap();
@@ -117,7 +110,7 @@ fn add_and_use_compare_symlink_targets() {
 
 #[test]
 fn move_changes_display_order_only_and_clamps_the_index() {
-    let Some(pack) = oxford() else { return };
+    let pack = sample_pack().canonicalize().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let second = copy_pack(&pack, dir.path(), "second.inkdict");
     let config_path = dir.path().join("config.json");
@@ -133,7 +126,7 @@ fn move_changes_display_order_only_and_clamps_the_index() {
 
 #[test]
 fn remove_active_skips_broken_packs_and_opens_the_next_usable_pack() {
-    let Some(pack) = oxford() else { return };
+    let pack = sample_pack().canonicalize().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let broken = copy_pack(&pack, dir.path(), "broken.inkdict");
     let next = copy_pack(&pack, dir.path(), "next.inkdict");
@@ -161,7 +154,7 @@ fn remove_active_skips_broken_packs_and_opens_the_next_usable_pack() {
 
 #[test]
 fn remove_inactive_preserves_the_open_dictionary() {
-    let Some(pack) = oxford() else { return };
+    let pack = sample_pack().canonicalize().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let other = copy_pack(&pack, dir.path(), "other.inkdict");
     let (mut session, _) = Session::start(None, Some(pack.clone()));
@@ -174,7 +167,7 @@ fn remove_inactive_preserves_the_open_dictionary() {
 
 #[test]
 fn use_requires_membership_and_failed_open_preserves_the_active_pack() {
-    let Some(pack) = oxford() else { return };
+    let pack = sample_pack().canonicalize().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let other = copy_pack(&pack, dir.path(), "other.inkdict");
     let config_path = dir.path().join("config.json");
@@ -189,7 +182,7 @@ fn use_requires_membership_and_failed_open_preserves_the_active_pack() {
         ..Settings::default()
     };
     session.set_settings(settings.clone()).unwrap();
-    assert_eq!(session.use_pack(&other).unwrap().entries, Some(39960));
+    assert_eq!(session.use_pack(&other).unwrap().entries, Some(6));
     assert_eq!(session.dictionary().unwrap().settings(), &settings);
     assert_eq!(Config::load(&config_path).active, Some(other.clone()));
     session.use_pack(&pack).unwrap();
@@ -201,7 +194,7 @@ fn use_requires_membership_and_failed_open_preserves_the_active_pack() {
 
 #[test]
 fn startup_override_adds_or_selects_a_pack_and_preserves_settings() {
-    let Some(pack) = oxford() else { return };
+    let pack = sample_pack().canonicalize().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let other = copy_pack(&pack, dir.path(), "other.inkdict");
     let config_path = dir.path().join("config.json");
@@ -233,7 +226,7 @@ fn startup_override_adds_or_selects_a_pack_and_preserves_settings() {
 
 #[test]
 fn settings_are_saved_only_after_the_open_dictionary_accepts_them() {
-    let Some(pack) = oxford() else { return };
+    let pack = sample_pack().canonicalize().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let config_path = dir.path().join("config.json");
     let (mut session, _) = Session::start(Some(config_path.clone()), Some(pack));
@@ -273,7 +266,7 @@ fn settings_without_an_open_pack_are_saved() {
 
 #[test]
 fn in_memory_session_writes_nothing() {
-    let Some(pack) = oxford() else { return };
+    let pack = sample_pack().canonicalize().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let local = copy_pack(&pack, dir.path(), "local.inkdict");
     let before = std::fs::read(&local).unwrap();
@@ -292,4 +285,54 @@ fn in_memory_session_writes_nothing() {
     session.remove_pack(&local).unwrap();
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     assert_eq!(std::fs::read(local).unwrap(), before);
+}
+
+#[test]
+fn sample_legacy_config_migrates_a_valid_pack_and_restores_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    let pack = copy_pack(&sample_pack(), dir.path(), "legacy.inkdict");
+    let config_path = dir.path().join("config.json");
+    std::fs::write(
+        &config_path,
+        serde_json::to_vec(&serde_json::json!({
+            "pack": pack, "settings": {"hide_examples": true, "font_scale": 1.3}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let (session, error) = Session::start(Some(config_path.clone()), None);
+    assert!(error.is_none());
+    assert_eq!(session.library().active, Some(pack.clone()));
+    assert_eq!(session.library().packs.len(), 1);
+    assert_eq!(session.dictionary().unwrap().info().entries, Some(6));
+    assert!(session.dictionary().unwrap().settings().hide_examples);
+    assert_eq!(session.dictionary().unwrap().settings().font_scale, 1.3);
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(config_path).unwrap()).unwrap();
+    assert!(saved.get("pack").is_none());
+    assert_eq!(saved["packs"], serde_json::json!([pack]));
+    assert_eq!(saved["active"], serde_json::json!(pack));
+}
+
+#[test]
+fn sample_startup_keeps_a_broken_pack_with_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let pack = copy_pack(&sample_pack(), dir.path(), "broken.inkdict");
+    let config_path = dir.path().join("config.json");
+    let (session, error) = Session::start(Some(config_path.clone()), Some(pack.clone()));
+    assert!(error.is_none());
+    drop(session);
+    std::fs::write(&pack, "broken").unwrap();
+    let (session, error) = Session::start(Some(config_path.clone()), None);
+    assert!(error.is_some());
+    assert!(session.dictionary().is_none());
+    let library = session.library();
+    assert_eq!(library.active, Some(pack.clone()));
+    assert_eq!(library.packs.len(), 1);
+    assert_eq!(library.packs[0].path, pack);
+    assert!(library.packs[0].error.is_some());
+    assert_eq!(library.packs[0].title, None);
+    assert_eq!(library.packs[0].entries, None);
+    assert_eq!(library.packs[0].bytes, Some(6));
+    assert_eq!(Config::load(&config_path).packs, [pack]);
 }

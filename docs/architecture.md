@@ -64,7 +64,9 @@ Python 参考实现（OxDic 仓库的 `oxdic/pack/reader.py`、`oxdic/preview.py
 
 ## 测试数据
 
-词典数据不进仓库。本地开发和测试用 `scripts/sync-oxdata.sh` 从 OxDic 数据仓库复制到 `oxdata/`（已被 `.gitignore` 忽略）：
+公开示例词典 `spec/samples/en-zh/` 随仓库提供。测试用 `inkdict-pack` 构建示例包，覆盖读包、词表、链接、资源、渲染、HTML、CLI 和应用逻辑；不需要私有数据，公共 CI 上始终运行。
+
+Oxford 词典数据不进仓库，作为与 Python 参考实现对照的额外检查。本地开发和测试用 `scripts/sync-oxdata.sh` 从 OxDic 数据仓库复制到 `oxdata/`（已被 `.gitignore` 忽略）：
 
 | 文件 | 用途 |
 | --- | --- |
@@ -74,4 +76,4 @@ Python 参考实现（OxDic 仓库的 `oxdic/pack/reader.py`、`oxdic/preview.py
 | `oxdata/*_report.json`、`SHA256SUMS` | 构建报告与校验和 |
 | `oxdata/golden/*.json` | Python 参考读取器的输出（`scripts/make-golden.py`，同步时自动生成），核心的对照测试 |
 
-依赖 `oxdata/` 的测试在目录不存在时跳过，不让没有数据的环境失败。
+依赖 `oxdata/` 的额外对照测试需要私有 OxDic 数据；目录不存在时打印一行 `skipped:` 提示并跳过。示例包测试照常运行。

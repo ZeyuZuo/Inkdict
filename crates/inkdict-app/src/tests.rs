@@ -3,6 +3,27 @@ use std::time::Instant;
 
 use super::*;
 
+// Unit tests do not receive Cargo’s integration-test temporary directory.
+pub fn sample_pack() -> PathBuf {
+    static PACK: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    PACK.get_or_init(|| {
+        let dir = PathBuf::from(
+            option_env!("CARGO_TARGET_TMPDIR")
+                .unwrap_or(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/tmp")),
+        )
+        .join("inkdict-app-unit-sample");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sample.inkdict");
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../spec/samples/en-zh/manifest.toml");
+        let mut options = inkdict_pack::Options::new(manifest);
+        options.output = Some(path.clone());
+        inkdict_pack::build(options).unwrap();
+        path
+    })
+    .clone()
+}
+
 fn oxford() -> Option<Dictionary> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../oxdata/oalecd10.inkdict");
     if !path.is_file() {
@@ -165,4 +186,162 @@ fn settings_layer_validates_against_the_oxford_registry() {
     };
     let problems = dictionary.stack.validate(&dictionary.registry);
     assert!(problems.is_empty(), "{problems:#?}");
+}
+
+#[test]
+fn sample_commands_info_words_and_entry() {
+    let dictionary = Dictionary::open(&sample_pack(), Settings::default()).unwrap();
+    dictionary.warm_up().unwrap();
+    let info = dictionary.info();
+    assert_eq!(info.id, "sample-en-zh");
+    assert_eq!(info.title, "示例英汉双解词典");
+    assert_eq!(info.entries, Some(6));
+    assert_eq!(info.source_lang, "en");
+    assert_eq!(info.target_langs, ["zh-Hans"]);
+    assert_eq!(
+        info.switches,
+        Switches {
+            pronunciation: true,
+            example: true
+        }
+    );
+    let words = dictionary.words("lead", 20).unwrap();
+    assert_eq!(words.len(), 5);
+    assert_eq!(words[0].word.entry, "lead-1");
+    assert_eq!(words[0].word.homograph, Some(1));
+    assert_eq!(words[1].word.entry, "lead-2");
+    assert_eq!(words[1].word.homograph, Some(2));
+    let went = dictionary.words("went", 1).unwrap();
+    assert_eq!(went.len(), 1);
+    assert_eq!(went[0].word.kind, inkdict_core::IndexKind::Inflection);
+    assert_eq!(went[0].word.summary.as_deref(), Some("v. 去；走"));
+    assert_eq!(serde_json::to_value(&went[0]).unwrap()["target"], "go");
+    assert_eq!(went[0].target.as_deref(), Some("go"));
+    assert_eq!(dictionary.words("CAFÉ", 1).unwrap()[0].word.entry, "cafe");
+    let close = dictionary.words("harbur", 1).unwrap();
+    assert_eq!(close[0].word.form, "harbour");
+    assert_eq!(close[0].word.distance, Some(1));
+    let view = dictionary.entry("harbour").unwrap();
+    assert_eq!(view.key, "harbour");
+    assert_eq!(view.headword, "harbour");
+    assert_eq!(view.homograph, None);
+    assert!(view.html.contains("data-anchor=\"2\""));
+    assert!(view.html.contains("class=\"dx-tabs\""));
+    assert!(view.html.contains("港口；海港"));
+    let lead = dictionary.entry("lead-2").unwrap();
+    assert_eq!(lead.homograph, Some(2));
+    assert!(lead.html.contains("data-link=\""));
+    assert_eq!(dictionary.entry("missing").unwrap_err().code, "not_found");
+}
+
+#[test]
+fn sample_follow_links_and_fallbacks() {
+    let dictionary = Dictionary::open(&sample_pack(), Settings::default()).unwrap();
+    for (from, entry, anchor, text, target) in [
+        (
+            "lead-1",
+            Some("lead-2"),
+            None,
+            "lead",
+            Target::Entry {
+                key: "lead-2".into(),
+                focus: FocusView::Top,
+            },
+        ),
+        (
+            "lead-2",
+            Some("lead-1"),
+            Some("v-1"),
+            "lead",
+            Target::Entry {
+                key: "lead-1".into(),
+                focus: FocusView::Anchor { number: 2 },
+            },
+        ),
+        (
+            "lantern",
+            Some("harbour"),
+            Some("n-1"),
+            "harbour",
+            Target::Entry {
+                key: "harbour".into(),
+                focus: FocusView::Anchor { number: 2 },
+            },
+        ),
+        (
+            "lead-1",
+            Some("lead-2"),
+            Some("missing"),
+            "lead",
+            Target::Entry {
+                key: "lead-2".into(),
+                focus: FocusView::Top,
+            },
+        ),
+        (
+            "lead-1",
+            Some("missing"),
+            Some("v-1"),
+            "lead",
+            Target::Entry {
+                key: "lead-1".into(),
+                focus: FocusView::Anchor { number: 2 },
+            },
+        ),
+        (
+            "lead-1",
+            Some("missing"),
+            Some("missing"),
+            "café",
+            Target::Lookup {
+                text: "café".into(),
+            },
+        ),
+    ] {
+        let link = Link {
+            entry: entry.map(str::to_owned),
+            anchor: anchor.map(str::to_owned),
+            anchor_type: None,
+            text: text.into(),
+        };
+        let actual = dictionary.follow(from, &link).unwrap();
+        assert_eq!(actual, target);
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            serde_json::to_value(target).unwrap()
+        );
+    }
+}
+
+#[test]
+fn sample_settings_hide_pronunciation_and_examples_independently() {
+    let mut dictionary = Dictionary::open(&sample_pack(), Settings::default()).unwrap();
+    let original = dictionary.entry("harbour").unwrap();
+    let words = dictionary.words("harbour", 20).unwrap();
+    for (hide_pronunciation, hide_examples) in
+        [(true, false), (false, true), (true, true), (false, false)]
+    {
+        dictionary
+            .set_settings(Settings {
+                hide_pronunciation,
+                hide_examples,
+                ..Settings::default()
+            })
+            .unwrap();
+        assert!(dictionary.stack.validate(&dictionary.registry).is_empty());
+        let view = dictionary.entry("harbour").unwrap();
+        assert_eq!(view.html.contains("ˈhɑːbə(r)"), !hide_pronunciation);
+        assert_eq!(view.html.contains("data-audio=\""), !hide_pronunciation);
+        assert_eq!(view.html.contains("class=\"dx-example "), !hide_examples);
+        assert_eq!(
+            view.html.contains("The fishing boats were back"),
+            !hide_examples
+        );
+        assert_eq!(view.html.contains("暴风雨来临前"), !hide_examples);
+        assert!(view.html.contains("港口；海港"));
+        assert!(view.html.contains("a stretch of water"));
+        assert_eq!(dictionary.words("harbour", 20).unwrap(), words);
+    }
+    assert_eq!(dictionary.entry("harbour").unwrap(), original);
+    assert!(dictionary.theme_css().contains("--c-fg:#1b1c1f"));
 }

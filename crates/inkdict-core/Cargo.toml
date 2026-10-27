@@ -22,3 +22,4 @@ zstd = "0.14"
 [dev-dependencies]
 sha2 = "0.10"
 tempfile = "3"
+inkdict-pack = { path = "../inkdict-pack" }

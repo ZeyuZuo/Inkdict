@@ -1635,6 +1635,7 @@ version = "0.1.0"
 dependencies = [
  "inkdict-core",
  "inkdict-html",
+ "inkdict-pack",
  "serde",
  "serde_json",
  "tempfile",
@@ -1659,6 +1660,7 @@ version = "0.1.0"
 dependencies = [
  "caseless",
  "fst",
+ "inkdict-pack",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1689,6 +1691,7 @@ name = "inkdict-html"
 version = "0.1.0"
 dependencies = [
  "inkdict-core",
+ "inkdict-pack",
  "serde_json",
 ]
 

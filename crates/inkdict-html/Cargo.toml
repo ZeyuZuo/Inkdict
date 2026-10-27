@@ -13,3 +13,4 @@ inkdict-core = { path = "../inkdict-core" }
 
 [dev-dependencies]
 serde_json = "1"
+inkdict-pack = { path = "../inkdict-pack" }
