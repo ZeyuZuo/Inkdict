@@ -34,3 +34,6 @@ settings.json
 
 # Built dictionary data copied from OxDic for local tests (scripts/sync-oxdata.sh)
 oxdata/
+
+# Python bytecode from scripts/
+__pycache__/
