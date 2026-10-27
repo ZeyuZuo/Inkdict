@@ -1,5 +1,5 @@
-# Android
+# Android (planned)
 
-Kotlin + Jetpack Compose。通过 UniFFI 生成的 Kotlin 绑定调用 `inkdict-core`（绑定 crate 计划为 `crates/inkdict-ffi`），读本地 `.inkdict`，完全离线。
+Kotlin and Jetpack Compose. The app will call `inkdict-core` through Kotlin bindings generated with UniFFI (planned crate: `crates/inkdict-ffi`) and read local `.inkdict` files, fully offline.
 
-计划功能：系统选词菜单 `PROCESS_TEXT`、分享查词、媒体在线播放与缓存。工程开工时用 Android Studio 模板生成。阶段：`docs/roadmap.md` M4。
+Planned: lookup from the system's text-selection menu (`PROCESS_TEXT`), share-to-look-up, playing and caching online media. See `docs/roadmap.md`.

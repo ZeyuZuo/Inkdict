@@ -5,12 +5,13 @@ Build with `cargo build --release -p inkdict-cli`. Reader commands take
 `pack` builds a new dictionary without an existing pack.
 
 ```sh
-export INKDICT_PACK=oxdata/oalecd10.inkdict
+target/release/inkdict pack spec/samples/en-zh/manifest.toml -o sample.inkdict
+export INKDICT_PACK=sample.inkdict
 target/release/inkdict info
 target/release/inkdict words went -n 20
-target/release/inkdict words recieve --json
-target/release/inkdict show apple --json
-target/release/inkdict render apple --theme default --overlay custom.toml
+target/release/inkdict words harbur --json
+target/release/inkdict show lantern --json
+target/release/inkdict render harbour --theme default --overlay custom.toml
 target/release/inkdict themes
 ```
 
@@ -28,7 +29,7 @@ validation problems; it exits nonzero if any theme is invalid. Its JSON output
 contains `name` and `problems` per theme. `serve` exposes the desktop dictionary
 commands over localhost HTTP, including `POST /words` with `{text, limit}`.
 
-Generate seeded inputs and compare the Rust and Python readers:
+Maintainers (needs the private `oxdata/` and OxDic's Python reader): generate seeded inputs and compare the Rust and Python readers:
 
 ```sh
 ../.venv/bin/python scripts/bench.py queries

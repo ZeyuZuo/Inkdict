@@ -1,79 +1,77 @@
-# 架构
+# Architecture
 
-## 一句话
+## In one sentence
 
-`inkdict-core` 是一个**库**，不是服务器。两个客户端都把它编进自己的程序里，只有界面不同。没有 Web 版，也没有后端（2026-10-25 决定，见 `docs/roadmap.md` D7）。
+`inkdict-core` is a **library**, not a server: every client compiles it in, and only the interface differs. There is no web version and no backend.
 
 ```text
-                  spec/（协议）
-                      │
-          crates/inkdict-core（Rust 库）
-   读 .inkdict · 词表 · 解压解析 · 主题计算 · 渲染树
-             ┌────────┴─────────┐
-          UniFFI      crates/inkdict-html + inkdict-app
-             │                  │
-       apps/android        apps/desktop
-      Kotlin + Compose   Tauri 2：Rust + WebView 界面（Svelte）
-          完全离线            完全离线
+                    spec/ (the protocol)
+                          │
+              crates/inkdict-core (Rust)
+   reads .inkdict · word list · entries · themes · render trees
+               ┌──────────┴───────────┐
+            UniFFI          crates/inkdict-html + inkdict-app
+               │                      │
+         apps/android            apps/desktop
+     Kotlin + Compose (planned)   Tauri 2: Rust + a Svelte UI in the WebView
+           offline                    offline
+
+   crates/inkdict-pack: source directory → .inkdict   (used by `inkdict pack`)
 ```
 
-## 查词在哪里发生
+## Where lookup happens
 
-| 端 | 查词在哪里发生 |
+| Client | Where |
 | --- | --- |
-| Android | 手机上：核心直接读本地 `.inkdict` |
-| 桌面 | 电脑上：Tauri 的 Rust 部分调用核心，WebView 里的界面只负责显示 |
+| Desktop | On the computer: the Rust side of the Tauri app calls the core; the UI in the WebView only displays and handles input |
+| Android (planned) | On the phone: the core reads the local `.inkdict` directly |
 
-两端都不需要服务器，媒体除外：音频和图片按资源源模板从 R2 读取，可以缓存或另下媒体包。桌面界面用 HTML/TS 写，但只运行在 Tauri 的 WebView 里，不对外部署。
+No client needs a server. The only network use is media a pack does not store itself: audio and pictures are then fetched from the pack's online templates (`spec/pack-v1.md` §4).
 
-## 核心的职责
+## What the core does
 
-1. **读包**：检查 `application_id`/`user_version`，读 `meta`（含 `norm`、`unicode_version`）、`files`（类型表、主题、zstd 字典）。
-2. **词条**：按 key 取出 body，zstd 解压，解析为节点树。
-3. **词表**：按包声明的方案（`fold-1` / `exact-1`）规范化输入，给出前缀、含有、拼写接近三组，一行一个词条，附短释义（`spec/pack-v1.md` §5）。拼写接近用内存中的检索键做编辑距离搜索。
-4. **主题计算**：把主题的选择器和层叠规则算好，给每个节点输出最终样式，生成“渲染树”。这样 Compose 和 HTML 两个渲染器只负责画，不各自实现一遍层叠规则。
-5. **资源和链接**：资源引用先查包内 `resources` 表，再按资源源模板给出 URL 列表；链接按 `spec/v1.md` §6 解析。
+1. **Open a pack**: check `application_id` and `user_version`, read `meta` (including `norm` and `unicode_version`) and `files` (type registry, themes, zstd dictionary).
+2. **Entries**: fetch a body by key, decompress it, parse the node tree.
+3. **Word list**: normalise the input with the pack's scheme (`fold-1` or `exact-1`) and return the prefix, contains and close-spelling groups, one row per entry, with summaries (`spec/pack-v1.md` §5). Close spellings use an in-memory edit-distance search over the lookup keys.
+4. **Themes**: apply the theme's selectors and cascade to every node and produce a **render tree** with final styles, so that each renderer only draws and none reimplements the cascade.
+5. **Resources and links**: a resource reference is looked up in the pack's `resources` table, then turned into online URLs from the templates; links resolve as in `spec/v1.md` §6.
 
-## 存储层
+The packer (`inkdict-pack`) shares the core's lookup-key, registry and theme code, so packing and reading cannot disagree.
 
-两个客户端都用 `rusqlite`，自带固定版本的 SQLite，以只读、`immutable=1` 方式打开包。核心直接基于 `rusqlite`，不设存储接口。规范化、词表排序这些逻辑写成与数据库无关的函数。
+## Storage
 
-## 渲染器
+The core uses `rusqlite` with a bundled SQLite and opens packs read-only (`immutable=1`). There is no storage abstraction; normalisation and ranking are plain functions independent of the database.
 
-只维护两套：Compose（Android）和 HTML（桌面端 WebView，`crates/inkdict-html`）。两者都只消费核心输出的渲染树。颜色、字号、间距等设计参数来自主题文件，不在各端代码里写死。界面只通过类型表里的 role 接触词条结构（如音标、例句的显示开关），不认词典自己的类型名。
+## Renderers
 
-桌面端的应用逻辑（词典库、设置、命令）在 `crates/inkdict-app`，Tauri 层（`apps/desktop/src-tauri`）和 `inkdict serve`（浏览器开发用）共用它。
+Two are planned: HTML for the desktop app (`crates/inkdict-html`) and Compose for Android. Both consume only the render tree. Colours, sizes and spacing come from the theme, never from client code. Clients touch entry structure only through the roles in the type registry (for example the pronunciation and examples switches), never through a dictionary's type names.
 
-## 一致性
+The desktop app's logic (dictionary library, settings, commands) lives in `crates/inkdict-app`. Both the Tauri layer (`apps/desktop/src-tauri`) and `inkdict serve` (for developing the UI in a browser) use it. Files a pack stores itself reach the WebView through the `inkdict-res` protocol.
 
-Python 参考实现（OxDic 仓库的 `oxdic/pack/reader.py`、`oxdic/preview.py`）对一组固定输入的输出，作为核心的对照测试：词表、检索键、资源、锚点、词条内容和 HTML 必须一致。
+## Themes and customisation
 
-## 主题与用户自定义
+How an entry looks is decided entirely by theme files (TOML, `spec/v1.md` §4). Themes stack, upper layers first (`spec/v1.md` §4.3):
 
-词条怎么显示完全由主题文件（TOML，格式见 `spec/v1.md` §4）决定，渲染器里不写死任何样式。主题按栈叠加（`spec/v1.md` §4.3），上层优先：
-
-| 层 | 来源 | 例子 |
+| Layer | Source | Status |
 | --- | --- | --- |
-| 词典默认主题 | 包内 `themes/default.toml` | Oxford 的版式：钥匙图标、发音胶囊、义项编号 |
-| 应用主题 | 应用内置或用户导入的主题文件 | 紧凑版、大字版、护眼配色 |
-| 用户设置 | 设置开关自动生成的叠加层 | 按 role 隐藏音标、例句；字号由界面调整 |
+| The dictionary's theme | `themes/<name>.toml` inside the pack | Used by the desktop app |
+| A user theme | A TOML file of the user's | Supported by the core and by `inkdict render --overlay`; not yet in the desktop app |
+| Settings | An overlay generated from the app's switches | Hides pronunciations / examples by role; text size is set by the app |
 
-用户能调的：字体、字号、颜色（浅色/深色各一套）、任何类型的显示或隐藏、块与行内、编号和括号等前后缀文字、间距和缩进、背景和圆角、说明框是否折叠、图标。普通用户用设置开关；高级用户可以直接编辑或导入 TOML 主题。
+A theme can change fonts, sizes, colours (a light and a dark set), whether any type is shown, block or inline layout, generated text such as numbers and brackets, spacing and indentation, backgrounds and corners, collapsing, icons and tabs. It cannot change the content, add arbitrary CSS or scripts, or lay entries out in ways the model does not describe (such as columns). The limits are deliberate: one theme must draw the same in HTML and in Compose, which runs no CSS, and having no scripts keeps dictionaries from carrying code.
 
-不能调的：内容本身、任意 CSS 或脚本、类型表之外的版面（如多栏）。限制是有意的：同一份主题要能在 Compose 和 HTML 上画出一样的结果，而 Compose 不执行 CSS；不允许脚本也避免了 MDX 那样的安全问题。
+## Tests and reference data
 
-## 测试数据
+The sample dictionary `spec/samples/en-zh/` is in the repository. Tests build it with `inkdict-pack` and cover reading, the word list, links, resources, rendering, HTML, the CLI and the app's logic; they need no other data and always run.
 
-公开示例词典 `spec/samples/en-zh/` 随仓库提供。测试用 `inkdict-pack` 构建示例包，覆盖读包、词表、链接、资源、渲染、HTML、CLI 和应用逻辑；不需要私有数据，公共 CI 上始终运行。
+Maintainers also compare the core with a Python reference implementation (in the OxDic repository, which holds the Oxford Advanced Learner's Dictionary data and is private). `scripts/sync-oxdata.sh` copies that data into the git-ignored `oxdata/`:
 
-Oxford 词典数据不进仓库，作为与 Python 参考实现对照的额外检查。本地开发和测试用 `scripts/sync-oxdata.sh` 从 OxDic 数据仓库复制到 `oxdata/`（已被 `.gitignore` 忽略）：
-
-| 文件 | 用途 |
+| File | Used for |
 | --- | --- |
-| `oxdata/oalecd10.inkdict` | Oxford 词典包，核心的读包、词表、渲染测试 |
-| `oxdata/entries.jsonl` | 全部词条内容（未压缩），渲染树和解码测试 |
-| `oxdata/examples/*.json` | 5 个金样例词条 |
-| `oxdata/*_report.json`、`SHA256SUMS` | 构建报告与校验和 |
-| `oxdata/golden/*.json` | Python 参考读取器的输出（`scripts/make-golden.py`，同步时自动生成），核心的对照测试 |
+| `oxdata/oalecd10.inkdict` | Reading, word-list and rendering tests on 39,960 real entries |
+| `oxdata/entries.jsonl` | All entries uncompressed: render-tree and decoding tests |
+| `oxdata/examples/*.json` | Five reference entries |
+| `oxdata/*_report.json`, `SHA256SUMS` | Build reports and checksums |
+| `oxdata/golden/*.json` | Output of the Python reader (`scripts/make-golden.py`) that the core must match exactly |
 
-依赖 `oxdata/` 的额外对照测试需要私有 OxDic 数据；目录不存在时打印一行 `skipped:` 提示并跳过。示例包测试照常运行。
+Without `oxdata/`, these extra tests print one `skipped:` line and pass; the sample tests still run. `scripts/compare-packs.py` compares two packs table by table, for checking `inkdict pack` against the Python packer.

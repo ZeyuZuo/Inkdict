@@ -1,58 +1,70 @@
 # Inkdict
 
-Inkdict 是一套开放的词典格式和配套应用。这个仓库只放协议和软件：
+Inkdict is an open format for dictionaries and a fast, offline dictionary app that reads it.
 
-- **协议**：词条内容、类型表、主题，以及词典包 `.inkdict` 的格式；
-- **软件**：一个共享的 Rust 核心，以及桌面、Android 两个客户端（不做 Web 版，没有后端）。
+A dictionary is one `.inkdict` file. It carries its entries, a lookup index, and its own **theme**, so the dictionary — not the app — decides how its entries look. The format works for any language: lookup keys, fonts and writing direction follow each pack's declared languages.
 
-词典数据（正文、音频、图片）不放在这里。每本词典由各自的数据仓库转换和打包；Oxford 数据在 OxDic 仓库，那里有抓取、转换、打包工具。
+![The Inkdict desktop app showing the sample dictionary](docs/images/inkdict.png)
 
-## 目录
+[中文说明](README.zh-CN.md)
 
-```text
-spec/               协议 v1（草案）
-  v1.md             内容格式、类型表、主题、语言、链接、资源引用
-  pack-v1.md        源目录、打包、词典包 .inkdict（SQLite）的格式、词表规则
-  pack-v1.sql       .inkdict 的表结构
-  samples/en-zh/    一部虚构英汉词典的完整源目录
-crates/
-  inkdict-core/     Rust 核心：读包、词表（前缀 / 含有 / 拼写接近）、词条解析、资源、链接、主题层叠与渲染树
-  inkdict-html/     把渲染树写成 HTML，给出主题 CSS（桌面端用）
-  inkdict-app/      桌面端的应用逻辑：词典库、设置、命令，与 Tauri 无关
-  inkdict-pack/     打包程序：把源目录（spec/pack-v1.md §1）打成 .inkdict
-  inkdict-cli/      命令行工具 inkdict：pack/info/words/show/render/themes/serve，基准测试与纠错评测
-apps/
-  desktop/          桌面端（Tauri 2 + Svelte 5，界面跑在 WebView 里）
-  android/          Android（Kotlin + Jetpack Compose，未开始）
-scripts/
-  sync-oxdata.sh    从 OxDic 复制已打包的 Oxford 数据到 oxdata/（不入库）
-  make-golden.py    用 OxDic 的 Python 参考读取器生成对照输出 oxdata/golden/
-  bench.py          生成基准测试输入，测 Python 参考读取器的耗时
-  compare-packs.py  逐表比较两个 .inkdict（核对 inkdict pack 与 OxDic 的 Python 打包程序）
-docs/
-  architecture.md   各部分怎么配合，核心如何被各端使用
-  roadmap.md        开发阶段与退出条件
-```
+## What is here
 
-## 开发
+| | |
+| --- | --- |
+| [`spec/`](spec/) | The protocol, version 1 (frozen): entry content, type registry, themes ([`v1.md`](spec/v1.md)) and the pack format ([`pack-v1.md`](spec/pack-v1.md)), with a complete [sample dictionary](spec/samples/en-zh/) |
+| [`docs/making-a-dictionary.md`](docs/making-a-dictionary.md) | A step-by-step guide to making your own dictionary |
+| `inkdict` | A command-line tool: `inkdict pack` builds a dictionary from its source files; `words`, `show`, `render`, `themes` and `info` inspect one |
+| Inkdict desktop | The app, for Linux, Windows and macOS: instant word list as you type, entries with tabs, pronunciation, cross-references, history, several dictionaries, light and dark themes |
+
+Inkdict ships no dictionary content of its own apart from the small sample. You bring dictionaries you have the right to use.
+
+## Getting started
+
+1. Download the app and the `inkdict` tool for your system from the [releases page](https://github.com/ZeyuZuo/Inkdict/releases), together with `sample-en-zh.inkdict`.
+2. Open the app, click the gear icon at the bottom of the sidebar, choose **添加词典…** (Add dictionary) and pick the `.inkdict` file. (The app's interface is in Chinese for now; an English interface is planned.)
+3. To make a dictionary of your own, follow [docs/making-a-dictionary.md](docs/making-a-dictionary.md).
+
+## Building from source
+
+You need Rust 1.95 (`rust-toolchain.toml` selects it) and, for the desktop app, Node.js 20.19 or newer plus the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) of your system (on Linux: WebKitGTK 4.1).
 
 ```bash
-scripts/sync-oxdata.sh   # 复制 Oxford 测试数据到 oxdata/ 并生成对照输出（需要本机有 OxDic 仓库及其 .venv）
-cargo test               # Rust 核心、应用逻辑、命令行
+cargo build --release -p inkdict-cli       # target/release/inkdict
+cargo test                                 # the Rust crates
+
+cd apps/desktop
+npm install
+npm run tauri build                        # installers under target/release/bundle/
+npm run check && npm test                  # the UI
 ```
 
-需要 Rust 1.95（`rust-toolchain.toml` 会自动选择）。桌面端的构建和开发方式见 `apps/desktop/README.md`。
+The desktop app's development setup is described in [`apps/desktop/README.md`](apps/desktop/README.md).
 
-## 状态
+## Repository layout
 
-| 部分 | 状态 |
-| --- | --- |
-| 协议 v1、词典包格式 v1 | 草案；Oxford 包已按此格式构建（OxDic 仓库） |
-| Rust 核心 | v1：读包、词表、词条、资源、链接、主题层叠与渲染树 |
-| 桌面 | M3 主体完成：词表、词条、标签页、历史、词典库、设置、窄窗口、深色；划词和小窗口未做 |
-| Android | 未开始 |
+```text
+spec/                  the protocol (CC BY 4.0) and the sample dictionary
+docs/                  guide, architecture, roadmap
+crates/
+  inkdict-core/        reads packs: word list, entries, links, resources, themes and render trees
+  inkdict-pack/        builds packs from a source directory
+  inkdict-html/        turns render trees into HTML and theme CSS (desktop app)
+  inkdict-app/         the desktop app's logic, independent of Tauri: dictionaries, settings, commands
+  inkdict-cli/         the inkdict command-line tool
+apps/
+  desktop/             the desktop app (Tauri 2, Svelte 5)
+  android/             planned
+scripts/               maintainer tools that compare against the Oxford data in the separate OxDic repository
+```
 
-## 许可证
+How the parts fit together: [`docs/architecture.md`](docs/architecture.md). What comes next: [`docs/roadmap.md`](docs/roadmap.md).
 
-- 代码：MIT 或 Apache-2.0，任选其一（`LICENSE-MIT`、`LICENSE-APACHE`）。
-- 协议文档与示例词典（`spec/`）：CC BY 4.0（`spec/LICENSE`）。按协议实现读取端、打包程序或词典，不需要额外许可。
+## Tests
+
+`cargo test` builds the sample dictionary with `inkdict pack` and tests reading, the word list, rendering, the CLI and the app's logic against it; no other data is needed. Maintainers also check the core against a full Oxford dictionary and a Python reference implementation; that data is private (it lives in the OxDic repository), and those tests skip without it.
+
+## License
+
+- Code: MIT or Apache-2.0, at your option ([`LICENSE-MIT`](LICENSE-MIT), [`LICENSE-APACHE`](LICENSE-APACHE)).
+- The protocol documents and the sample dictionary in `spec/`: CC BY 4.0 ([`spec/LICENSE`](spec/LICENSE)). Implementing readers, packers or dictionaries that follow the protocol needs no further permission.

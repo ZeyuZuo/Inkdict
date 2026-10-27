@@ -1,83 +1,43 @@
-# 路线图
+# Roadmap
 
-每个阶段都有退出条件，满足后再进入下一阶段。数据相关的工作（抓取、转换、打包、媒体上传）在各词典的数据仓库里做，不在这里。
+## Decisions
 
-## 已定的决策
-
-| 编号 | 决策 | 理由 |
+| | Decision | Why |
 | --- | --- | --- |
-| D1 | 词典包用 SQLite（`.inkdict`） | 随机读取、前缀检索、FTS5 都是现成的；Android 和桌面都能直接读 |
-| D2 | 共享 Rust 核心，各端只写界面 | 检索、排序、纠错、主题计算只实现一次，两端结果一致 |
-| D3 | Android 用 Kotlin + Compose，经 UniFFI 调用核心 | 原生手感、启动快、能接系统选词菜单 |
-| D4 | 桌面用 Tauri 2，界面跑在系统 WebView 里 | 安装包小；不必为三个桌面系统各写一套界面 |
-| D5 | 桌面界面用 TypeScript + 轻量框架（Solid 或 Svelte，开工时定） | 富文本排版用 HTML/CSS 最成熟 |
-| D6 | 本仓库不放词典数据 | 词典正文和媒体有版权；协议和软件可以公开 |
-| D7 | 只做客户端（Android、桌面），不做 Web 版和后端（2026-10-25） | 核心只需 `rusqlite`，不必支持 WASM 和 D1；词典正文不必上线分发 |
+| D1 | A dictionary is one SQLite file (`.inkdict`) | Random access and prefix lookup come for free; every platform can read it |
+| D2 | One Rust core shared by all clients | Lookup, ranking, spelling suggestions and the theme cascade are written once and agree everywhere |
+| D3 | Desktop: Tauri 2 with the UI in the system WebView | Small installers; one UI for Linux, Windows and macOS |
+| D4 | Desktop UI: TypeScript and Svelte | HTML and CSS are the most mature way to lay out rich text |
+| D5 | Android: Kotlin and Compose, calling the core through UniFFI | Native feel, fast start, access to the system's text-selection menu |
+| D6 | Native clients only, no web version or server | The core only needs SQLite; dictionary content never has to be served online |
+| D7 | No dictionary content in this repository, apart from the sample | Dictionary text and media are copyrighted; the protocol and software are open |
 
-## 阶段
+## Done
 
-### M1 Rust 核心：读包与查词
+### Core (M1, M2)
 
-- [x] 打开 `.inkdict`，校验标识和版本，读取 meta、类型表、主题、zstd 字典
-- [x] 按 key 取词条并解析
-- [x] 联想：`norm` 与 Python 参考实现逐字一致，排序、去重一致
-- [x] 全文检索：`fts_query` 一致，rowid 解码
-- [x] 资源 URL、锚点编号、链接回退
-- [x] 命令行工具 `inkdict`（`suggest`/`search`/`show`），用于手动验证和基准测试
+Reading packs, the word list (prefix, contains, close spellings), entries, anchors and links, resources, the theme cascade and render trees, the `inkdict` command-line tool. Checked against a Python reference implementation on the full Oxford Advanced Learner's Dictionary (39,960 entries): identical word lists, lookup keys and HTML.
 
-退出条件：对一组固定查询，与 Python 参考读取器的输出完全一致；联想 p95 不高于 Python 版本。
+Release build, on 39,960 entries: word list p95 2.8 ms; render tree p95 0.65 ms.
 
-结果（2026-10-25，`oxdata/golden/` 全部对照一致）：
+### Desktop app (M3)
 
-| 调用（release，本机 SSD） | Rust p50 / p95 / p99 (ms) | Python p50 / p95 / p99 (ms) |
-| --- | --- | --- |
-| 联想，2,000 个词头前缀 | 0.04 / 2.0 / 3.0 | 0.06 / 2.2–2.4 / 3.3–3.6 |
-| 全文检索，1,000 个英文词和汉字 | 0.06 / 3.2 / 9.9 | 0.19 / 3.6 / 11.0 |
-| 打开词条，2,000 个随机词条 | 0.016 / 0.075 / 0.17 | 0.025 / 0.076 / 0.18 |
+Word list as you type, entries with part-of-speech tabs, pronunciation, cross-references with a "back to" link, history with scroll position, several dictionaries (add, remove, reorder, switch), settings, a narrow single-column layout with always-on-top, light and dark.
 
-三次运行取范围；输入由 `scripts/bench.py queries` 生成。联想 p95 主要花在 `a` 这类单字母前缀的排序上，两种实现相同；M3 若要更低，可以缓存短前缀的结果。
+Measured in the real WebKitGTK window (release build, from input to the updated screen): word list p50 17 ms / p95 18 ms; opening an entry p50 16 ms / p95 54 ms. Targets were 50 ms and 100 ms.
 
-### M2 核心：纠错与渲染树
+### Version 0.1
 
-- [x] 纠错（编辑距离 2 以内）：检索键建内存 FST，按字符逐行计算 OSA 距离并剪枝；没有用 SymSpell 的删除表（Oxford 约需几十 MB，Android 上太大）
-- [x] 主题解析与层叠计算（含主题栈，当时为 v0 §7.2），输出渲染树
-- [x] 渲染树对照测试：测试用的序列化器把渲染树写成 HTML，与 OxDic 参考渲染器 `oxdic/preview.py` 的输出逐字节一致（`oxdata/golden/html.json`，796 个词条，测试数据不入库）
+- Protocol v1 frozen and published in English, under CC BY 4.0.
+- `inkdict pack`: the packer in Rust, matching the Python reference table by table.
+- Tests on the public sample dictionary, so they run anywhere.
+- Media stored in a pack shown by the desktop app.
 
-结果（2026-10-25，release，本机 SSD）：
+## Next
 
-| 项 | 数值 |
-| --- | --- |
-| 渲染（解压 + 解析 + 主题计算），1,000 个随机词条 | p50 0.08 ms，p95 0.43 ms，p99 1.2 ms，最慢 5.7 ms；最大的词条 `go` 约 9 ms |
-| 纠错，2,000 个生成的拼写错误 | top-1 86.6%，top-5 97.8%；p50 0.46 ms，p95 0.61 ms |
-| 纠错索引 | 74,077 个检索键，首次使用时构建约 42 ms |
-
-允许的编辑距离随输入长度变化：1–2 个字符只认精确匹配，3–4 个字符 1 处，5 个字符起 2 处。距离相同时，字母相同的候选（相邻字母颠倒）排前面，再按检索排序值。生成和评测：`scripts/bench.py queries`，`inkdict eval correct oxdata/bench/typos.tsv`。
-
-### M3 桌面
-
-- [x] 协议和包格式升到 v1（`spec/v1.md`、`spec/pack-v1.md`）：索引种类与 role、`fold-1` / `exact-1` 检索键、短释义、包内资源、按语言选字体、标签页；去掉全文检索。核心、Oxford 包跟着改
-- [x] Tauri 2 应用，核心在 Rust 侧直接调用；界面：词表（前缀 / 含有 / 拼写接近）、词条渲染、词性标签页、发音、链接跳转、历史、词典库、设置、窄窗口、深色模式
-- [ ] 划词查询、小窗口（P6）
-
-退出条件：每天能用它查词；输入到词表显示 < 50 ms，词条渲染 < 100 ms。
-
-结果（2026-10-27，release，真实 WebKitGTK 窗口，从输入或打开到画面更新）：
-
-| 项 | p50 | p95 |
-| --- | --- | --- |
-| 逐键输入 → 词表画出（40 个查询，189 次） | 17 ms | 18 ms |
-| 打开 → 词条画出（40 个词条） | 16 ms | 54 ms |
-
-核心单独测：词表 p95 2.8 ms，渲染树 p95 0.65 ms。
-
-### M4 Android
-
-- [ ] UniFFI 绑定（`crates/inkdict-ffi`），Compose 渲染器
-- [ ] 下载正文包；媒体在线播放并缓存，或下载媒体包
-- [ ] 系统选词菜单 `PROCESS_TEXT`、分享查词
-
-### M5 协议通用化
-
-- [ ] 接入第二本词典（非英汉），按结果修订为 spec v1
-- [ ] 固定检索键的 Unicode 版本：v1 的 `meta` 已记录 `unicode_version`（Oxford 包 14.0.0），但 Rust 核心仍用更新的 Unicode 表、不按它处理。Unicode 14 已分配的字符只有 U+1171E 结果不同；之后新增的字符在查询里会被保留而查不到（`crates/inkdict-core/src/text.rs` 模块说明）
-- [ ] 可选：把打包器移植为 `inkdict pack`，数据仓库不再依赖 Python
+- **English interface** for the desktop app, following the system language (the interface is Chinese only today).
+- **Look up selected text** from anywhere, and a small lookup window.
+- **User themes** in the desktop app (the core already supports a user theme layer).
+- **Android** (M4): UniFFI bindings (`crates/inkdict-ffi`), a Compose renderer, the system's `PROCESS_TEXT` menu and share-to-look-up.
+- **A second dictionary in another language pair** (M5), to test the protocol beyond English–Chinese.
+- **Unicode versions**: packs record `unicode_version`, but the core always uses its own, newer Unicode tables. For characters assigned up to Unicode 14 the result differs only for U+1171E; characters assigned later may not be found in packs built with older tables (see `crates/inkdict-core/src/text.rs`).
