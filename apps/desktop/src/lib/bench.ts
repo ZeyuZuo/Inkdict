@@ -22,18 +22,18 @@ export async function runBench(dictionary: Dictionary): Promise<boolean> {
   if (!plan) return false;
   const log = (message: string) => invoke('bench_log', { message });
   await log(`start: ${plan.queries.length} queries, ${plan.entries.length} entries, hidden=${document.hidden}`);
-  const suggest: number[] = [];
+  const words: number[] = [];
   const entry: number[] = [];
   for (const [index, query] of plan.queries.entries()) {
-    if (index % 25 === 0) await log(`query ${index}: ${suggest.length} samples`);
+    if (index % 25 === 0) await log(`query ${index}: ${words.length} samples`);
     for (let length = 1; length <= query.length; length++) {
       const version = dictionary.perfVersion;
       await dictionary.lookup(query.slice(0, length));
-      const sample = await nextSample(dictionary, dictionary.samples.suggest, version);
-      if (sample !== undefined) suggest.push(sample);
+      const sample = await nextSample(dictionary, dictionary.samples.words, version);
+      if (sample !== undefined) words.push(sample);
     }
   }
-  await log(`entries: ${suggest.length} suggest samples`);
+  await log(`entries: ${words.length} word-list samples`);
   for (const key of plan.entries) {
     const version = dictionary.perfVersion;
     await dictionary.open(key);
@@ -41,7 +41,7 @@ export async function runBench(dictionary: Dictionary): Promise<boolean> {
     if (sample !== undefined) entry.push(sample);
   }
   await invoke('bench_report', {
-    report: { suggest: summarize(suggest), entry: summarize(entry), samples: { suggest, entry } },
+    report: { words: summarize(words), entry: summarize(entry), samples: { words, entry } },
   });
   return true;
 }

@@ -3,7 +3,7 @@
   let { samples, version, onclose }: { samples: Samples; version: number; onclose: () => void } = $props();
   const metrics = $derived.by(() => {
     void version;
-    return [{ label: '词表', ...summarize(samples.suggest) }, { label: '词条', ...summarize(samples.entry) }];
+    return [{ label: '词表', ...summarize(samples.words) }, { label: '词条', ...summarize(samples.entry) }];
   });
 </script>
 

@@ -129,7 +129,7 @@ export class Dictionary {
       await tick();
       await frame();
       if (!this.queries.current(token)) return null;
-      this.measure('suggest', started);
+      this.measure('words', started);
       if (show && words.length) {
         this.showTimer = setTimeout(() => {
           if (this.queries.current(token)) void this.show(0, true);

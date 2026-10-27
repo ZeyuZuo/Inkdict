@@ -1,6 +1,6 @@
-export type Metric = 'suggest' | 'entry';
-export interface Samples { suggest: number[]; entry: number[] }
-export const createSamples = (): Samples => ({ suggest: [], entry: [] });
+export type Metric = 'words' | 'entry';
+export interface Samples { words: number[]; entry: number[] }
+export const createSamples = (): Samples => ({ words: [], entry: [] });
 export function record(samples: number[], milliseconds: number): void {
   if (!Number.isFinite(milliseconds) || milliseconds < 0) return;
   samples.push(milliseconds);
