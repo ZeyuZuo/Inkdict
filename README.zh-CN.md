@@ -15,7 +15,7 @@ Inkdict 是一套开放的词典格式，以及一个读取这种格式的离线
 | [`spec/`](spec/) | 协议第 1 版（已冻结）：词条内容、类型表、主题（[`v1.md`](spec/v1.md)），词典包格式（[`pack-v1.md`](spec/pack-v1.md)），以及一部完整的[示例词典](spec/samples/en-zh/)。协议文档为英文 |
 | [`docs/making-a-dictionary.md`](docs/making-a-dictionary.md) | 一步步制作自己的词典（英文） |
 | `inkdict` | 命令行工具：`inkdict pack` 把源文件打包成词典；`words`、`show`、`render`、`themes`、`info` 用来检查词典 |
-| Inkdict 桌面端 | Linux、Windows、macOS：输入即出词表，词性标签页，发音，交叉引用，历史记录，多部词典切换，浅色和深色 |
+| Inkdict 桌面端 | Linux、Windows、macOS：输入即出词表，词性标签页，发音，交叉引用，历史记录，多部词典切换，在词典自带的多个主题间选择，浅色和深色 |
 
 除了一部很小的示例词典，Inkdict 不附带任何词典内容。请使用你有权使用的词典。
 

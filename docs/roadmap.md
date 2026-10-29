@@ -33,6 +33,11 @@ Measured in the real WebKitGTK window (release build, from input to the updated 
 - Tests on the public sample dictionary, so they run anywhere.
 - Media stored in a pack shown by the desktop app.
 
+### After 0.1
+
+- **Choosing a dictionary's theme**: when a pack carries several themes, the desktop settings list them (词条样式); the choice is remembered per dictionary.
+- The fold chevron of collapsible blocks shows in every theme (it used a colour token no theme defined).
+
 ## Next
 
 - **English interface** for the desktop app, following the system language (the interface is Chinese only today).

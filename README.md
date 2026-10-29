@@ -15,7 +15,7 @@ A dictionary is one `.inkdict` file. It carries its entries, a lookup index, and
 | [`spec/`](spec/) | The protocol, version 1 (frozen): entry content, type registry, themes ([`v1.md`](spec/v1.md)) and the pack format ([`pack-v1.md`](spec/pack-v1.md)), with a complete [sample dictionary](spec/samples/en-zh/) |
 | [`docs/making-a-dictionary.md`](docs/making-a-dictionary.md) | A step-by-step guide to making your own dictionary |
 | `inkdict` | A command-line tool: `inkdict pack` builds a dictionary from its source files; `words`, `show`, `render`, `themes` and `info` inspect one |
-| Inkdict desktop | The app, for Linux, Windows and macOS: instant word list as you type, entries with tabs, pronunciation, cross-references, history, several dictionaries, light and dark themes |
+| Inkdict desktop | The app, for Linux, Windows and macOS: instant word list as you type, entries with tabs, pronunciation, cross-references, history, several dictionaries, a choice among a dictionary's own themes, light and dark |
 
 Inkdict ships no dictionary content of its own apart from the small sample. You bring dictionaries you have the right to use.
 
