@@ -16,7 +16,7 @@ button.dx-icon:hover{opacity:.7}
 span.dx-icon{margin-right:.28em}
 details>summary{list-style:none;cursor:pointer;position:relative;padding-right:1.6em}
 details>summary::-webkit-details-marker{display:none}
-details>summary::after{content:"";position:absolute;right:.2em;top:.35em;width:.45em;height:.45em;border-right:2px solid var(--c-faint);border-bottom:2px solid var(--c-faint);transform:rotate(45deg);transition:transform .15s}
+details>summary::after{content:"";position:absolute;right:.2em;top:.35em;width:.45em;height:.45em;border-right:2px solid currentColor;border-bottom:2px solid currentColor;opacity:.45;transform:rotate(45deg);transition:transform .15s}
 details:not([open])>summary::after{transform:rotate(-45deg)}
 .dx-link{color:inherit;text-decoration:none}
 .dx-link:hover{text-decoration:underline}
