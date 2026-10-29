@@ -100,6 +100,7 @@ fn main() {
             commands::follow,
             commands::settings,
             commands::set_settings,
+            commands::set_theme,
             commands::theme_css,
             bench::bench_plan,
             bench::bench_report,

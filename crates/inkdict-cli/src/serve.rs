@@ -122,6 +122,11 @@ fn call(session: &mut Session, name: &str, args: &Value) -> Result<Value, AppErr
                 .map_err(|err| AppError::new("bad_input", err.to_string()))?;
             to_json(serde_json::to_value(session.set_settings(settings)?))
         }
+        "set_theme" => {
+            let name: String = serde_json::from_value(args["name"].clone())
+                .map_err(|err| AppError::new("bad_input", err.to_string()))?;
+            to_json(serde_json::to_value(session.set_theme(&name)?))
+        }
         "theme_css" => Ok(Value::String(dictionary(session)?.theme_css())),
         other => Err(AppError::new(
             "bad_input",

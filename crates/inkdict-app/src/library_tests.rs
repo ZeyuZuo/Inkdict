@@ -206,6 +206,7 @@ fn startup_override_adds_or_selects_a_pack_and_preserves_settings() {
         packs: vec![pack.clone()],
         active: Some(pack.clone()),
         settings: settings.clone(),
+        ..Config::default()
     }
     .save(&config_path)
     .unwrap();
@@ -285,6 +286,96 @@ fn in_memory_session_writes_nothing() {
     session.remove_pack(&local).unwrap();
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     assert_eq!(std::fs::read(local).unwrap(), before);
+}
+
+#[test]
+fn theme_choices_persist_by_id_across_sessions_and_all_open_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let pack = copy_pack(&sample_pack(), dir.path(), "sample.inkdict");
+    let other = copy_pack(&sample_pack(), dir.path(), "other.inkdict");
+    let db = rusqlite::Connection::open(&other).unwrap();
+    db.execute("UPDATE meta SET value = 'other' WHERE key = 'id'", [])
+        .unwrap();
+    drop(db);
+    let config_path = dir.path().join("config.json");
+    let (mut session, error) = Session::start(Some(config_path.clone()), Some(pack.clone()));
+    assert!(error.is_none());
+    let info = session.set_theme("plain").unwrap();
+    assert_eq!(info.theme, "plain");
+    assert_eq!(
+        Config::load(&config_path).themes,
+        [(info.id.clone(), "plain".into())].into()
+    );
+    let saved = std::fs::read(&config_path).unwrap();
+    assert_eq!(session.set_theme("missing").unwrap_err().code, "bad_input");
+    assert_eq!(session.dictionary().unwrap().info(), info);
+    assert_eq!(std::fs::read(&config_path).unwrap(), saved);
+    drop(session);
+
+    let (mut session, error) = Session::start(Some(config_path.clone()), None);
+    assert!(error.is_none());
+    assert_eq!(session.dictionary().unwrap().info(), info);
+    session.add_packs(vec![other.clone()]).unwrap();
+    assert_eq!(session.use_pack(&other).unwrap().theme, "default");
+    assert_eq!(session.use_pack(&pack).unwrap().theme, "plain");
+    session.use_pack(&other).unwrap();
+    session.remove_pack(&other).unwrap();
+    assert_eq!(session.dictionary().unwrap().info(), info);
+
+    // A moved/rebuilt pack has the same id, so even add_packs restores its choice.
+    session.remove_pack(&pack).unwrap();
+    assert_eq!(session.set_theme("plain").unwrap_err().code, "no_pack");
+    let moved = copy_pack(&pack, dir.path(), "moved.inkdict");
+    let added = session.add_packs(vec![moved.clone()]).unwrap();
+    assert!(added.rejected.is_empty());
+    assert_eq!(session.dictionary().unwrap().info(), info);
+    drop(session);
+    let (mut session, error) = Session::start(Some(config_path.clone()), Some(moved));
+    assert!(error.is_none());
+    assert_eq!(session.dictionary().unwrap().info(), info);
+    assert_eq!(session.set_theme("default").unwrap().theme, "default");
+    assert!(!Config::load(&config_path).themes.contains_key(&info.id));
+    let (session, error) = Session::start(Some(config_path), None);
+    assert!(error.is_none());
+    assert_eq!(session.dictionary().unwrap().info().theme, "default");
+}
+
+#[test]
+fn missing_saved_theme_falls_back_to_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let config_path = dir.path().join("config.json");
+    let pack = sample_pack();
+    Config {
+        packs: vec![pack.clone()],
+        active: Some(pack),
+        themes: [("sample-en-zh".into(), "removed".into())].into(),
+        ..Config::default()
+    }
+    .save(&config_path)
+    .unwrap();
+    let (session, error) = Session::start(Some(config_path), None);
+    assert!(error.is_none());
+    assert_eq!(session.dictionary().unwrap().info().theme, "default");
+}
+
+#[test]
+fn config_without_themes_loads_library_and_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    let config_path = dir.path().join("config.json");
+    let pack = sample_pack();
+    std::fs::write(&config_path, serde_json::to_vec(&serde_json::json!({
+        "packs": [pack], "active": pack, "settings": { "hide_examples": true, "font_scale": 1.3 }
+    })).unwrap()).unwrap();
+    let config = Config::load(&config_path);
+    assert_eq!(config.packs, vec![pack.clone()]);
+    assert_eq!(config.active, Some(pack));
+    assert!(config.settings.hide_examples);
+    assert_eq!(config.settings.font_scale, 1.3);
+    assert!(config.themes.is_empty());
+    let (session, error) = Session::start(Some(config_path), None);
+    assert!(error.is_none());
+    assert_eq!(session.dictionary().unwrap().info().theme, "default");
+    assert!(session.dictionary().unwrap().settings().hide_examples);
 }
 
 #[test]

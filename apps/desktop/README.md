@@ -10,7 +10,7 @@ All commands are called with Tauri `invoke`; arguments and results are JSON with
 
 | Command | Arguments | Result |
 | --- | --- | --- |
-| `pack_info` | — | `{ id, title, entries, source_lang, target_langs, switches }`. `switches` is `{ pronunciation, example }`: true when the pack has a type with that role; settings show only those switches. Fails with `no_pack` when no pack is open |
+| `pack_info` | — | `{ id, title, entries, source_lang, target_langs, theme, themes, switches }`. `theme` is the current theme file name; `themes` lists `{ name, title }` in pack order. `switches` is `{ pronunciation, example }`: true when the pack has a type with that role; settings show only those switches. Fails with `no_pack` when no pack is open |
 | `library` | — | `Library`: `{ active: string or null, packs: LibraryItem[] }`; each item is `{ path, title, entries, bytes, error }` (`title`, `entries`, `bytes`, `error` may be null). Packs that cannot be opened stay listed, with the reason in `error` |
 | `add_packs` | `{ paths: string[] }` (multiple selection in the file dialog) | `{ library: Library, rejected: [{ path, message }] }`. Valid packs are appended in order under their canonical paths; duplicates and invalid files go to `rejected`. When no pack is active, the first added one is opened |
 | `remove_pack` | `{ path }` | `Library`. Only removes the entry from the list; the file stays. Removing the active pack opens the first pack that can be opened, or none |
@@ -21,11 +21,12 @@ All commands are called with Tauri `invoke`; arguments and results are JSON with
 | `follow` | `{ current, link }`, `link` is `{ entry?, anchor?, text }` | `{ kind: "entry", key, focus }` or `{ kind: "lookup", text }`; `focus` is `{ kind: "top" }` or `{ kind: "anchor", number }` |
 | `settings` | — | `Settings` |
 | `set_settings` | `{ settings }` | `Settings`; later `entry` calls render with them |
+| `set_theme` | `{ name }` | Like `pack_info`; selects a theme file name, retaining settings. Fails with `bad_input` for unknown names or `no_pack` when none is open |
 | `theme_css` | — | A string: the theme's font and colour variables (light and dark) and the base `.dx-*` rules |
 
 `Settings` is `{ hide_pronunciation: bool, hide_examples: bool, font_scale: number }`. The first two hide types with the `pronunciation` or `example` role (`spec/v1.md` §3.2) through an overlay theme built in Rust; `font_scale` is applied by the UI as a CSS variable.
 
-Settings and the library are saved in `config.json` in the app's configuration directory: `{ "packs": ["/a.inkdict", "/b.inkdict"], "active": "/a.inkdict", "settings": { … } }`. `active` is one of `packs` or null. `--pack` or `INKDICT_PACK` adds a path to the library and makes it active. `inkdict serve` offers the same commands as `POST /<command>` with the same JSON; its library lives in memory only.
+Settings, the library and theme choices are saved in `config.json` in the app's configuration directory: `{ "packs": ["/a.inkdict", "/b.inkdict"], "active": "/a.inkdict", "settings": { … }, "themes": { "pack-id": "plain" } }`. `active` is one of `packs` or null. Theme choices use pack ids so they survive moves and rebuilds; selecting a pack's default removes its saved choice. A saved theme absent from the pack falls back to its default. `--pack` or `INKDICT_PACK` adds a path to the library and makes it active. `inkdict serve` offers the same commands as `POST /<command>` with the same JSON; its library lives in memory only.
 
 Errors: a failed command rejects with `{ code, message }`, `code` being `no_pack`, `not_found`, `bad_input` or `internal`.
 

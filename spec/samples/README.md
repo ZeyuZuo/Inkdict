@@ -8,7 +8,8 @@ Build it with `inkdict pack spec/samples/en-zh/manifest.toml -o sample.inkdict`.
 |---|---|
 | `manifest.toml` | Pack information, languages, file locations, lookup settings, an online resource source |
 | `types.toml` | The type registry: types, nesting, attributes, roles |
-| `themes/default.toml` | The theme |
+| `themes/default.toml` | The default theme, with part-of-speech tabs |
+| `themes/plain.toml` | Plain: no tabs or example markers, with a green accent |
 | `entries.jsonl` | 6 entries (harbour, lantern, go, lead¹, lead², café), one node tree per line |
 | `summaries.jsonl` | Word-list summaries, one per entry or anchor |
 | `resources/` | Audio and a picture stored in the pack; `audio:harbour-us` is missing on purpose, to show the fallback to the online source |

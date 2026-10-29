@@ -1,6 +1,7 @@
 //! What the app remembers between runs: the library and the settings,
 //! as `config.json` in the app's config directory.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,7 @@ pub struct Config {
     pub packs: Vec<PathBuf>,
     pub active: Option<PathBuf>,
     pub settings: Settings,
+    pub themes: BTreeMap<String, String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -22,6 +24,7 @@ struct SavedConfig {
     active: Option<PathBuf>,
     pack: Option<PathBuf>,
     settings: Settings,
+    themes: BTreeMap<String, String>,
 }
 
 impl From<SavedConfig> for Config {
@@ -35,6 +38,7 @@ impl From<SavedConfig> for Config {
             packs,
             active,
             settings: saved.settings,
+            themes: saved.themes,
         }
     }
 }

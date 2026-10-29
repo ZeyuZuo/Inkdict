@@ -19,14 +19,14 @@ describe('Tauri command contract', () => {
     await api.movePack('/b.inkdict', 0); await api.usePack('/b.inkdict');
     await api.words('moon'); await api.words('moon', 5);
     await api.entry('moonjar'); await api.follow('moonjar', link);
-    await api.settings(); await api.setSettings(settings); await api.themeCss();
+    await api.settings(); await api.setSettings(settings); await api.setTheme('plain'); await api.themeCss();
     expect(vi.mocked(invoke).mock.calls).toEqual([
       ['pack_info', undefined], ['library', undefined],
       ['add_packs', { paths: ['/a.inkdict', '/b.inkdict'] }], ['remove_pack', { path: '/a.inkdict' }],
       ['move_pack', { path: '/b.inkdict', index: 0 }], ['use_pack', { path: '/b.inkdict' }],
       ['words', { text: 'moon', limit: 30 }], ['words', { text: 'moon', limit: 5 }],
       ['entry', { key: 'moonjar' }], ['follow', { current: 'moonjar', link }],
-      ['settings', undefined], ['set_settings', { settings }], ['theme_css', undefined],
+      ['settings', undefined], ['set_settings', { settings }], ['set_theme', { name: 'plain' }], ['theme_css', undefined],
     ]);
   });
   it('preserves structured command errors', async () => {

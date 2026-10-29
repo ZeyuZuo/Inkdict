@@ -275,7 +275,15 @@ export class Dictionary {
     } catch (error) { this.report(error); }
   }
 
-  /** Render the current entry again (new settings) where the reader is. */
+  async setPackTheme(name: string) {
+    try {
+      this.pack = await api.setTheme(name);
+      installTheme(await api.themeCss());
+      await this.rerender();
+    } catch (error) { this.report(error); }
+  }
+
+  /** Render the current entry again where the reader is. */
   private async rerender() {
     if (!this.current) return;
     const token = this.entries.next();

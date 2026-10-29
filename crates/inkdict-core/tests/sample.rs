@@ -20,7 +20,7 @@ fn sample_metadata_and_entry_keys() {
     assert_eq!(meta.norm(), inkdict_core::text::Scheme::Fold);
     assert_eq!(meta.source_lang(), "en");
     assert_eq!(meta.target_langs(), ["zh-Hans"]);
-    assert_eq!(meta.themes(), ["default"]);
+    assert_eq!(meta.themes(), ["default", "plain"]);
     assert_eq!(meta.entries(), Some(6));
     assert_eq!(meta.resources(), Some(4));
     assert_eq!(pack.prepare_words().unwrap(), 23);

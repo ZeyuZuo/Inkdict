@@ -69,8 +69,18 @@ pub struct PackInfo {
     pub entries: Option<u64>,
     pub source_lang: String,
     pub target_langs: Vec<String>,
+    pub theme: String,
+    pub themes: Vec<ThemeInfo>,
     /// Display switches the settings show for this pack.
     pub switches: Switches,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ThemeInfo {
+    /// The theme's file name, without the extension.
+    pub name: String,
+    /// The parsed theme's display name.
+    pub title: String,
 }
 
 /// A word list row, with the headword a variant or inflection points to.
@@ -108,7 +118,8 @@ pub enum FocusView {
 pub struct Dictionary {
     pack: Pack,
     registry: Registry,
-    base: Theme,
+    themes: Vec<(String, Theme)>,
+    theme: usize,
     settings: Settings,
     stack: ThemeStack,
     /// Where the host serves packs' own files (see [`Session::set_resource_base`]).
@@ -116,16 +127,34 @@ pub struct Dictionary {
 }
 
 impl Dictionary {
-    /// Open a pack and render with its default theme.
-    pub fn open(path: &Path, settings: Settings) -> Result<Self> {
-        let pack = Pack::open(path)?;
+    /// Open with the saved theme, falling back to the default if it is absent.
+    pub fn open(path: &Path, settings: Settings, theme: Option<&str>) -> Result<Self> {
+        Self::from_pack(Pack::open(path)?, settings, theme)
+    }
+
+    pub(crate) fn from_pack(pack: Pack, settings: Settings, theme: Option<&str>) -> Result<Self> {
         let registry = pack.registry()?;
-        let base = pack.theme(pack.meta().default_theme())?;
-        let stack = settings::stack(&base, &registry, &settings)?;
+        let themes = pack
+            .meta()
+            .themes()
+            .iter()
+            .map(|name| {
+                let parsed = pack.theme(name).map_err(|error| {
+                    AppError::new("bad_input", format!("theme {name}: {error}"))
+                })?;
+                Ok((name.clone(), parsed))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let theme = themes
+            .iter()
+            .position(|(name, _)| Some(name.as_str()) == theme)
+            .unwrap_or(0);
+        let stack = settings::stack(&themes[theme].1, &registry, &settings)?;
         Ok(Dictionary {
             pack,
             registry,
-            base,
+            themes,
+            theme,
             settings,
             stack,
             resource_base: None,
@@ -163,6 +192,15 @@ impl Dictionary {
             entries: meta.entries(),
             source_lang: meta.source_lang().to_owned(),
             target_langs: meta.target_langs().to_vec(),
+            theme: self.themes[self.theme].0.clone(),
+            themes: self
+                .themes
+                .iter()
+                .map(|(name, theme)| ThemeInfo {
+                    name: name.clone(),
+                    title: theme.name.clone(),
+                })
+                .collect(),
             switches: Switches::of(&self.registry),
         }
     }
@@ -218,9 +256,22 @@ impl Dictionary {
 
     /// Apply new settings; on an error the old ones stay in force.
     pub fn set_settings(&mut self, settings: Settings) -> Result<&Settings> {
-        self.stack = settings::stack(&self.base, &self.registry, &settings)?;
+        self.stack = settings::stack(&self.themes[self.theme].1, &self.registry, &settings)?;
         self.settings = settings;
         Ok(&self.settings)
+    }
+
+    /// Change the pack theme while retaining the settings overlay; errors leave it unchanged.
+    pub fn set_theme(&mut self, name: &str) -> Result<()> {
+        let theme = self
+            .themes
+            .iter()
+            .position(|(candidate, _)| candidate == name)
+            .ok_or_else(|| AppError::new("bad_input", format!("unknown theme {name}")))?;
+        let stack = settings::stack(&self.themes[theme].1, &self.registry, &self.settings)?;
+        self.stack = stack;
+        self.theme = theme;
+        Ok(())
     }
 
     pub fn theme_css(&self) -> String {

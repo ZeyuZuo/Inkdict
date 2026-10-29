@@ -78,6 +78,7 @@ fn json_and_overrides_and_default_output() {
     let manifest = manifest
         .replace("\"types.toml\"", &literal("types.toml"))
         .replace("\"themes/default.toml\"", &literal("themes/default.toml"))
+        .replace("\"themes/plain.toml\"", &literal("themes/plain.toml"))
         .replace("\"resources\"", &literal("resources"));
     fs::write(dir.0.join("manifest.toml"), manifest).unwrap();
     fs::write(

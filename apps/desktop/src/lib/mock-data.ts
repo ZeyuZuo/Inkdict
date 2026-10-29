@@ -47,7 +47,7 @@ function sound(): string {
   for (let i = 0; i < 1600; i++) bytes[44 + i] = 128 + Math.round(16 * Math.sin(i * 0.35) * (1 - i / 1600));
   return `data:audio/wav;base64,${btoa(String.fromCharCode(...bytes))}`;
 }
-export function renderMock(key: string, settings: Settings): string | null {
+export function renderMock(key: string, settings: Settings, theme = 'default'): string | null {
   const w = words.find(w => w.key === key);
   if (!w) return null;
   const next = words[(words.indexOf(w) + 1) % words.length];
@@ -60,7 +60,7 @@ export function renderMock(key: string, settings: Settings): string | null {
       ${settings.hide_pronunciation ? '' : `<span class="dx-pronunciation" style="margin-left:1em">/${w.pron}/ <button class="dx-icon" aria-label="播放示例声音" title="播放示例声音" data-audio="data:audio/wav;base64,AA== ${sound()}">◖))</button></span>`}</div>
     </div>
     <section class="dx-sense" data-anchor="1" style="position:relative;padding-left:1.6em;margin-bottom:1.8em">
-      <span class="dx-marker" style="width:1.6em;color:var(--c-muted)">1</span>
+      ${theme === 'plain' ? '' : '<span class="dx-marker" style="width:1.6em;color:var(--c-muted)">1</span>'}
       <div>${w.definition}</div>
       <div lang="zh-CN" style="color:var(--c-muted);margin-top:.3em">${w.zh}。</div>
       ${settings.hide_examples ? '' : example}

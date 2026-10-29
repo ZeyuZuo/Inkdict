@@ -64,15 +64,16 @@ impl Session {
             };
             session.config.active = Some(path);
         }
-        let error = session.config.active.as_deref().and_then(|path| {
-            match Dictionary::open(path, session.config.settings.clone()) {
+        let active = session.config.active.clone();
+        let error = active
+            .as_deref()
+            .and_then(|path| match session.open_dictionary(path) {
                 Ok(dictionary) => {
                     session.dictionary = Some(dictionary);
                     None
                 }
                 Err(error) => Some(error),
-            }
-        });
+            });
         let save_error = session.save().err();
         (session, error.or(save_error))
     }
@@ -95,6 +96,12 @@ impl Session {
 
     pub fn dictionary(&self) -> Option<&Dictionary> {
         self.dictionary.as_ref()
+    }
+
+    fn open_dictionary(&self, path: &Path) -> Result<Dictionary> {
+        let pack = Pack::open(path)?;
+        let theme = self.config.themes.get(pack.meta().id()).map(String::as_str);
+        Dictionary::from_pack(pack, self.config.settings.clone(), theme)
     }
 
     pub fn library(&self) -> Library {
@@ -138,7 +145,7 @@ impl Session {
                 if self.position(&canonical).is_ok() {
                     return Err(AppError::new("bad_input", "pack is already in the library"));
                 }
-                let dictionary = Dictionary::open(&canonical, self.config.settings.clone())?;
+                let dictionary = self.open_dictionary(&canonical)?;
                 Ok((canonical, dictionary))
             };
             match add() {
@@ -171,7 +178,7 @@ impl Session {
             self.dictionary = None;
             self.config.active = None;
             let opened = self.config.packs.iter().find_map(|path| {
-                Dictionary::open(path, self.config.settings.clone())
+                self.open_dictionary(path)
                     .ok()
                     .map(|dictionary| (path.clone(), dictionary))
             });
@@ -197,7 +204,7 @@ impl Session {
     pub fn use_pack(&mut self, path: &Path) -> Result<PackInfo> {
         let index = self.position(path)?;
         let path = &self.config.packs[index];
-        let dictionary = Dictionary::open(path, self.config.settings.clone())?;
+        let dictionary = self.open_dictionary(path)?;
         let info = dictionary.info();
         self.config.active = Some(path.clone());
         self.install(dictionary);
@@ -207,6 +214,20 @@ impl Session {
 
     pub fn settings(&self) -> &Settings {
         &self.config.settings
+    }
+
+    /// Apply first, then remember only non-default choices by pack id.
+    pub fn set_theme(&mut self, name: &str) -> Result<PackInfo> {
+        let dictionary = self.dictionary.as_mut().ok_or_else(AppError::no_pack)?;
+        dictionary.set_theme(name)?;
+        let info = dictionary.info();
+        if name == dictionary.pack.meta().default_theme() {
+            self.config.themes.remove(&info.id);
+        } else {
+            self.config.themes.insert(info.id.clone(), name.to_owned());
+        }
+        self.save()?;
+        Ok(info)
     }
 
     /// Apply first: a failed settings overlay must never reach config.json.

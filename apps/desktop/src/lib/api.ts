@@ -40,5 +40,6 @@ export const api = {
   follow: (current: string, link: Link) => command('follow', { current, link }),
   settings: () => command('settings', undefined),
   setSettings: (settings: Settings) => command('set_settings', { settings }),
+  setTheme: (name: string) => command('set_theme', { name }),
   themeCss: () => command('theme_css', undefined),
 };

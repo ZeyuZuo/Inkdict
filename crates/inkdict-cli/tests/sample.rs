@@ -148,10 +148,10 @@ fn sample_render_json_and_overlay_order() {
 
 #[test]
 fn sample_themes_and_info_text_json() {
-    assert_eq!(run(&["themes"]), "default\n");
+    assert_eq!(run(&["themes"]), "default\nplain\n");
     assert_eq!(
         json(&["themes"]),
-        json!([{"name":"default", "problems":[]}])
+        json!([{"name":"default", "problems":[]}, {"name":"plain", "problems":[]}])
     );
     let info = json(&["info"]);
     for (key, value) in [
@@ -161,7 +161,7 @@ fn sample_themes_and_info_text_json() {
         ("norm", "fold-1"),
         ("resources", "4"),
         ("target_langs", "[\"zh-Hans\"]"),
-        ("themes", "[\"default\"]"),
+        ("themes", "[\"default\", \"plain\"]"),
     ] {
         assert_eq!(info["meta"][key], value);
         assert!(
@@ -170,6 +170,12 @@ fn sample_themes_and_info_text_json() {
                 .any(|line| line == format!("{key}\t{value}"))
         );
     }
-    assert_eq!(info["files"], json!(["themes/default.toml", "types.toml"]));
-    assert!(run(&["info"]).contains("files:\n  themes/default.toml\n  types.toml\n"));
+    assert_eq!(
+        info["files"],
+        json!(["themes/default.toml", "themes/plain.toml", "types.toml"])
+    );
+    assert!(
+        run(&["info"])
+            .contains("files:\n  themes/default.toml\n  themes/plain.toml\n  types.toml\n")
+    );
 }

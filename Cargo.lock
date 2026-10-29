@@ -1637,6 +1637,7 @@ dependencies = [
  "inkdict-core",
  "inkdict-html",
  "inkdict-pack",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

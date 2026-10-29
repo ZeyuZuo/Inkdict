@@ -113,6 +113,15 @@ pub fn set_settings(state: State<'_, AppState>, settings: Settings) -> Result<Se
 }
 
 #[tauri::command]
+pub fn set_theme(state: State<'_, AppState>, name: String) -> Result<PackInfo> {
+    state
+        .session
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .set_theme(&name)
+}
+
+#[tauri::command]
 pub fn theme_css(state: State<'_, AppState>) -> Result<String> {
     with(&state, |dictionary| Ok(dictionary.theme_css()))
 }

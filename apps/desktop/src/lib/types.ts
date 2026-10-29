@@ -7,6 +7,8 @@ export interface PackInfo {
   entries: number | null;
   source_lang: string;
   target_langs: string[];
+  theme: string;
+  themes: { name: string; title: string }[];
   /** Display switches the pack offers: a type with that role exists. */
   switches: { pronunciation: boolean; example: boolean };
 }
@@ -80,5 +82,6 @@ export interface Commands {
   follow: [{ current: string; link: Link }, LinkTarget];
   settings: [undefined, Settings];
   set_settings: [{ settings: Settings }, Settings];
+  set_theme: [{ name: string }, PackInfo];
   theme_css: [undefined, string];
 }

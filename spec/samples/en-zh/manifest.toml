@@ -17,7 +17,7 @@ targets = ["zh-Hans"]    # translation languages; [] for a monolingual dictionar
 
 [files]
 types = "types.toml"
-themes = ["themes/default.toml"]   # the first is the default theme
+themes = ["themes/default.toml", "themes/plain.toml"]   # the first is the default theme
 entries = "entries.jsonl"          # one entry (node tree) per line
 summaries = "summaries.jsonl"      # optional
 resources = "resources"            # optional: resources/<kind>/<key>.<ext>, stored in the pack

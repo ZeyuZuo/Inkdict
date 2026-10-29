@@ -15,5 +15,6 @@ inkdict-core = { path = "../inkdict-core" }
 inkdict-html = { path = "../inkdict-html" }
 
 [dev-dependencies]
+rusqlite = "0.41"
 tempfile = "3"
 inkdict-pack = { path = "../inkdict-pack" }

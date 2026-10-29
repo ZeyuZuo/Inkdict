@@ -9,6 +9,8 @@ const path = '/demo/invented.inkdict';
 const info: PackInfo = {
   id: 'invented-demo', title: '小小造词集', entries: words.length, source_lang: 'en', target_langs: ['zh-Hans'],
   switches: { pronunciation: true, example: true },
+  theme: 'default',
+  themes: [{ name: 'default', title: 'Default' }, { name: 'plain', title: 'Plain' }],
 };
 let library: Library = { active: path, packs: [{ path, title: info.title, entries: words.length, bytes: 12_288, error: null }] };
 const norm = (text: string) => text.trim().toLocaleLowerCase();
@@ -53,13 +55,22 @@ const handlers: { [K in keyof Commands]: (args: Commands[K][0]) => Commands[K][1
   words: ({ text, limit }) => { open(); return list(text, limit); },
   entry: ({ key }) => {
     open();
-    const html = renderMock(key, settings);
+    const html = renderMock(key, settings, info.theme);
     return html === null ? fail('not_found', '没有找到这个词条') : { key, headword: key, homograph: null, html };
   },
   follow: ({ current, link }) => follow(current, link),
   settings: () => ({ ...settings }),
   set_settings: (args) => { settings = { ...args.settings }; return { ...settings }; },
-  theme_css: () => { open(); return themeCss; },
+  set_theme: ({ name }) => {
+    open();
+    if (!info.themes.some(theme => theme.name === name)) fail('bad_input', `unknown theme ${name}`);
+    info.theme = name;
+    return { ...info };
+  },
+  theme_css: () => {
+    open();
+    return info.theme === 'plain' ? `${themeCss}\n.dx-entry{--c-muted:#28704b}.dx-link{color:#28704b}.dx-marker{display:none}` : themeCss;
+  },
 };
 
 export async function mockCommand<K extends keyof Commands>(name: K, args: Commands[K][0]): Promise<Commands[K][1]> {

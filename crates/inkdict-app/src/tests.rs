@@ -30,7 +30,7 @@ fn oxford() -> Option<Dictionary> {
         eprintln!("skipped: {} missing", path.display());
         return None;
     }
-    Some(Dictionary::open(&path, Settings::default()).unwrap())
+    Some(Dictionary::open(&path, Settings::default(), None).unwrap())
 }
 
 const TYPES: &str = "[meta]\nformat = \"inkdict-types\"\nversion = 1\n\
@@ -74,6 +74,7 @@ fn config_round_trips_and_tolerates_broken_files() {
     let path = dir.path().join("inkdict/config.json");
     assert_eq!(Config::load(&path), Config::default());
     let config = Config {
+        themes: [("oalecd10".into(), "classic".into())].into(),
         packs: vec!["/data/oalecd10.inkdict".into()],
         active: Some("/data/oalecd10.inkdict".into()),
         settings: Settings {
@@ -188,7 +189,7 @@ fn settings_layer_validates_against_the_oxford_registry() {
 
 #[test]
 fn sample_commands_info_words_and_entry() {
-    let dictionary = Dictionary::open(&sample_pack(), Settings::default()).unwrap();
+    let dictionary = Dictionary::open(&sample_pack(), Settings::default(), None).unwrap();
     dictionary.warm_up().unwrap();
     let info = dictionary.info();
     assert_eq!(info.id, "sample-en-zh");
@@ -196,6 +197,20 @@ fn sample_commands_info_words_and_entry() {
     assert_eq!(info.entries, Some(6));
     assert_eq!(info.source_lang, "en");
     assert_eq!(info.target_langs, ["zh-Hans"]);
+    assert_eq!(info.theme, "default");
+    assert_eq!(
+        info.themes,
+        vec![
+            ThemeInfo {
+                name: "default".into(),
+                title: "Default".into()
+            },
+            ThemeInfo {
+                name: "plain".into(),
+                title: "Plain".into()
+            },
+        ]
+    );
     assert_eq!(
         info.switches,
         Switches {
@@ -234,7 +249,7 @@ fn sample_commands_info_words_and_entry() {
 
 #[test]
 fn sample_follow_links_and_fallbacks() {
-    let dictionary = Dictionary::open(&sample_pack(), Settings::default()).unwrap();
+    let dictionary = Dictionary::open(&sample_pack(), Settings::default(), None).unwrap();
     for (from, entry, anchor, text, target) in [
         (
             "lead-1",
@@ -312,7 +327,7 @@ fn sample_follow_links_and_fallbacks() {
 
 #[test]
 fn sample_settings_hide_pronunciation_and_examples_independently() {
-    let mut dictionary = Dictionary::open(&sample_pack(), Settings::default()).unwrap();
+    let mut dictionary = Dictionary::open(&sample_pack(), Settings::default(), None).unwrap();
     let original = dictionary.entry("harbour").unwrap();
     let words = dictionary.words("harbour", 20).unwrap();
     for (hide_pronunciation, hide_examples) in
@@ -376,4 +391,80 @@ fn sample_resources_are_served_by_path_and_tried_first() {
     );
     assert!(dictionary.resource("sample-en-zh/image/%zz").is_none());
     assert!(dictionary.resource("sample-en-zh/image").is_none());
+}
+
+#[test]
+fn sample_theme_switch_rebuilds_rendering_and_keeps_settings() {
+    let settings = Settings {
+        hide_pronunciation: true,
+        font_scale: 1.2,
+        ..Settings::default()
+    };
+    let mut dictionary = Dictionary::open(&sample_pack(), settings.clone(), None).unwrap();
+    let original = dictionary.entry("harbour").unwrap();
+    let css = dictionary.theme_css();
+    assert!(original.html.contains("class=\"dx-tabs\""));
+    dictionary.set_theme("plain").unwrap();
+    let plain = dictionary.entry("harbour").unwrap();
+    assert_eq!(dictionary.info().theme, "plain");
+    assert_ne!(dictionary.theme_css(), css);
+    assert_ne!(plain, original);
+    assert!(!plain.html.contains("class=\"dx-tabs\""));
+    assert!(!plain.html.contains("◆"));
+    assert!(!plain.html.contains("ˈhɑːbə(r)"));
+    assert!(plain.html.contains("The fishing boats were back"));
+    assert_eq!(dictionary.settings(), &settings);
+    assert!(dictionary.stack.validate(&dictionary.registry).is_empty());
+
+    let plain_css = dictionary.theme_css();
+    assert_eq!(
+        dictionary.set_theme("missing").unwrap_err().code,
+        "bad_input"
+    );
+    assert_eq!(dictionary.info().theme, "plain");
+    assert_eq!(dictionary.theme_css(), plain_css);
+    assert_eq!(dictionary.entry("harbour").unwrap(), plain);
+    assert_eq!(dictionary.settings(), &settings);
+
+    dictionary
+        .set_settings(Settings {
+            hide_examples: true,
+            ..settings
+        })
+        .unwrap();
+    assert!(
+        !dictionary
+            .entry("harbour")
+            .unwrap()
+            .html
+            .contains("The fishing boats were back")
+    );
+    dictionary.set_theme("default").unwrap();
+    assert_eq!(dictionary.theme_css(), css);
+    assert!(
+        !dictionary
+            .entry("harbour")
+            .unwrap()
+            .html
+            .contains("The fishing boats were back")
+    );
+}
+
+#[test]
+fn opening_parses_every_theme_and_rejects_a_broken_alternative() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("broken.inkdict");
+    std::fs::copy(sample_pack(), &path).unwrap();
+    let db = rusqlite::Connection::open(&path).unwrap();
+    db.execute(
+        "UPDATE files SET body = ? WHERE name = 'themes/plain.toml'",
+        [b"not valid TOML".as_slice()],
+    )
+    .unwrap();
+    drop(db);
+    let error = Dictionary::open(&path, Settings::default(), None)
+        .err()
+        .unwrap();
+    assert_eq!(error.code, "bad_input");
+    assert!(error.message.contains("plain"));
 }
