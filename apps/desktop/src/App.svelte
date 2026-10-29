@@ -139,7 +139,7 @@
     onadd={() => void add()} onaddpath={path => void dictionary.addPacks([path])}
     onremove={path => void dictionary.removePack(path)} onmove={(path, index) => void dictionary.movePack(path, index)}
     onuse={path => dictionary.usePack(path)} onsettings={settings => void dictionary.updateSettings(settings)}
-    ontheme={mode => dictionary.setTheme(mode)} onclose={closeSettings} />
+    onpacktheme={name => void dictionary.setPackTheme(name)} ontheme={mode => dictionary.setTheme(mode)} onclose={closeSettings} />
 {/if}
 
 {#if dictionary.error}

@@ -5,11 +5,12 @@
   import { isTauri } from '../lib/api';
   import { shortPath, size } from '../lib/files';
   import Icon from './Icon.svelte';
-  let { library, pack, settings, theme, onadd, onaddpath, onremove, onmove, onuse, onsettings, ontheme, onclose }: {
+  let { library, pack, settings, theme, onadd, onaddpath, onremove, onmove, onuse, onsettings, onpacktheme, ontheme, onclose }: {
     library: Library; pack: PackInfo | null; settings: Settings; theme: ThemeMode;
     onadd: () => void; onaddpath: (path: string) => void; onremove: (path: string) => void;
     onmove: (path: string, index: number) => void; onuse: (path: string) => Promise<void>;
-    onsettings: (settings: Settings) => void; ontheme: (mode: ThemeMode) => void; onclose: () => void;
+    onsettings: (settings: Settings) => void; onpacktheme: (name: string) => void;
+    ontheme: (mode: ThemeMode) => void; onclose: () => void;
   } = $props();
   let dialog: HTMLElement;
   let typed = $state('');
@@ -104,6 +105,20 @@
         {/if}
       </div>
     </section>
+
+    <!-- The open dictionary's own themes (spec/v1.md §4); one theme needs no choice. -->
+    {#if pack && pack.themes.length > 1}
+      <section aria-labelledby="style-title">
+        <h3 id="style-title">词条样式</h3>
+        <div class="segments" role="radiogroup" aria-labelledby="style-title"
+          style:grid-template-columns={`repeat(${pack.themes.length}, minmax(0, 1fr))`}
+          style:width={`min(${pack.themes.length * 90}px, 100%)`}>
+          {#each pack.themes as item (item.name)}
+            <button role="radio" aria-checked={pack.theme === item.name} onclick={() => onpacktheme(item.name)}>{item.title}</button>
+          {/each}
+        </div>
+      </section>
+    {/if}
 
     <section aria-labelledby="display-title">
       <h3 id="display-title">显示</h3>
