@@ -206,6 +206,17 @@ def anchors_golden(pack, keys, anchor_node, rng):
     return cases
 
 
+class PackResolver:
+    """A resource's first online URL from the pack's own sources, as Rust's Preview markup
+    prints it; a resource stored in the pack has no URL there."""
+
+    def __init__(self, pack):
+        self.pack = pack
+
+    def url(self, ref):
+        return next(iter(self.pack.resource_urls(ref)), None)
+
+
 def html_golden(pack, keys, registry, theme, renderer):
     """Example HTML plus independent samples of ordinary and special entries."""
     rng = random.Random(20261026)
@@ -262,7 +273,7 @@ def main():
     sys.path.insert(0, str(oxdic))
     from oxdic.pack import text
     from oxdic.pack.reader import Pack, anchor_node
-    from oxdic.preview import Renderer, Resolver
+    from oxdic.preview import Renderer
     from oxdic.protocol import Registry, Theme
 
     if not PACK.is_file():
@@ -283,7 +294,7 @@ def main():
         assert types_path.read_bytes() == pack.file('types.toml'), 'types.toml differs from pack'
         assert theme_path.read_bytes() == pack.file('themes/default.toml'), 'default theme differs from pack'
         registry, theme = Registry(types_path), Theme(theme_path)
-        renderer = Renderer(registry, theme, Resolver(OXDATA / 'examples/resources.toml'))
+        renderer = Renderer(registry, theme, PackResolver(pack))
         write('html.json', html_golden(pack, keys, registry, theme, renderer))
     finally:
         pack.close()
