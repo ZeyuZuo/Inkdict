@@ -446,20 +446,21 @@ fn folder_pack(dir: &Path, name: &str) -> PathBuf {
 #[test]
 fn start_scans_only_finished_visible_packs_in_name_order() {
     let dir = tempfile::tempdir().unwrap();
-    let z = folder_pack(dir.path(), "z.inkdict");
-    let a = folder_pack(dir.path(), "a.INKDICT");
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let z = folder_pack(root.as_path(), "z.inkdict");
+    let a = folder_pack(root.as_path(), "a.INKDICT");
     for name in [".hidden.inkdict", "partial.inkdict.part", "notes.txt"] {
-        folder_pack(dir.path(), name);
+        folder_pack(root.as_path(), name);
     }
-    let recent = copy_pack(&sample_pack(), dir.path(), "recent.inkdict");
-    std::fs::create_dir(dir.path().join("sub.inkdict")).unwrap();
-    folder_pack(&dir.path().join("sub.inkdict"), "nested.inkdict");
-    let (mut session, error) = Session::start(None, None, Some(dir.path().to_owned()));
+    let recent = copy_pack(&sample_pack(), root.as_path(), "recent.inkdict");
+    std::fs::create_dir(root.as_path().join("sub.inkdict")).unwrap();
+    folder_pack(&root.as_path().join("sub.inkdict"), "nested.inkdict");
+    let (mut session, error) = Session::start(None, None, Some(root.as_path().to_owned()));
     assert!(error.is_none());
     let library = session.library();
     assert_eq!(
         library.folder,
-        Some(dunce::canonicalize(dir.path()).unwrap())
+        Some(dunce::canonicalize(root.as_path()).unwrap())
     );
     assert_eq!(library.active, Some(a.clone()));
     assert_eq!(session.config.packs, [a, z]);
@@ -473,29 +474,34 @@ fn start_scans_only_finished_visible_packs_in_name_order() {
 #[test]
 fn start_creates_the_folder_and_reports_creation_errors() {
     let dir = tempfile::tempdir().unwrap();
-    let folder = dir.path().join("new/dictionaries");
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let folder = root.as_path().join("new/dictionaries");
     let (session, error) = Session::start(None, None, Some(folder.clone()));
     assert!(error.is_none());
     assert!(folder.is_dir());
     assert_eq!(session.folder(), Some(folder.as_path()));
-    let file = dir.path().join("file");
+    let file = root.as_path().join("file");
     std::fs::write(&file, "not a directory").unwrap();
     let (_, error) = Session::start(None, None, Some(file));
     assert_eq!(error.unwrap().code, "internal");
 }
 
+// Deletes a file the session holds open, which Windows does not allow
+// (the app itself closes a dictionary before trashing it).
+#[cfg(not(windows))]
 #[test]
 fn rescan_preserves_order_and_outside_entries_and_replaces_deleted_active() {
     let dir = tempfile::tempdir().unwrap();
-    let folder = dir.path().join("dictionaries");
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let folder = root.as_path().join("dictionaries");
     std::fs::create_dir(&folder).unwrap();
     let a = folder_pack(&folder, "a.inkdict");
     let broken = folder_pack(&folder, "b.inkdict");
     let c = folder_pack(&folder, "c.inkdict");
     std::fs::write(&broken, "broken").unwrap();
     age(&broken);
-    let outside = folder_pack(dir.path(), "outside.inkdict");
-    let config_path = dir.path().join("config.json");
+    let outside = folder_pack(root.as_path(), "outside.inkdict");
+    let config_path = root.as_path().join("config.json");
     Config {
         packs: vec![outside.clone()],
         ..Config::default()
@@ -538,8 +544,9 @@ fn rescan_preserves_order_and_outside_entries_and_replaces_deleted_active() {
 #[test]
 fn add_copies_into_folder_and_rejects_clashes_and_duplicates() {
     let dir = tempfile::tempdir().unwrap();
-    let folder = dir.path().join("dictionaries");
-    let source = folder_pack(dir.path(), "source.inkdict");
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let folder = root.as_path().join("dictionaries");
+    let source = folder_pack(root.as_path(), "source.inkdict");
     let (mut session, error) = Session::start(None, None, Some(folder.clone()));
     assert!(error.is_none());
     let added = session.add_packs(vec![source.clone()]).unwrap();
@@ -574,20 +581,22 @@ fn add_copies_into_folder_and_rejects_clashes_and_duplicates() {
 #[test]
 fn copy_failure_cleans_up_its_partial_file() {
     let dir = tempfile::tempdir().unwrap();
-    let missing = dir.path().join("missing.inkdict");
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let missing = root.as_path().join("missing.inkdict");
     assert_eq!(
-        copy_into(&missing, dir.path()).unwrap_err().code,
+        copy_into(&missing, root.as_path()).unwrap_err().code,
         "internal"
     );
-    assert!(!dir.path().join(".missing.inkdict.part").exists());
+    assert!(!root.as_path().join(".missing.inkdict.part").exists());
 }
 
 #[test]
 fn remove_folder_file_discards_it_and_selects_next_pack() {
     let dir = tempfile::tempdir().unwrap();
-    let a = folder_pack(dir.path(), "a.inkdict");
-    let b = folder_pack(dir.path(), "b.inkdict");
-    let (mut session, _) = Session::start(None, None, Some(dir.path().to_owned()));
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let a = folder_pack(root.as_path(), "a.inkdict");
+    let b = folder_pack(root.as_path(), "b.inkdict");
+    let (mut session, _) = Session::start(None, None, Some(root.as_path().to_owned()));
     let library = session.remove_pack(&a).unwrap();
     assert!(!a.exists());
     assert_eq!(library.active, Some(b.clone()));
@@ -598,11 +607,15 @@ fn remove_folder_file_discards_it_and_selects_next_pack() {
     assert!(session.config.packs.is_empty());
 }
 
+// Deletes a file the session holds open, which Windows does not allow
+// (the app itself closes a dictionary before trashing it).
+#[cfg(not(windows))]
 #[test]
 fn failed_discard_keeps_the_library_entry() {
     let dir = tempfile::tempdir().unwrap();
-    let pack = folder_pack(dir.path(), "a.inkdict");
-    let (mut session, _) = Session::start(None, None, Some(dir.path().to_owned()));
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let pack = folder_pack(root.as_path(), "a.inkdict");
+    let (mut session, _) = Session::start(None, None, Some(root.as_path().to_owned()));
     std::fs::remove_file(&pack).unwrap();
     assert_eq!(session.remove_pack(&pack).unwrap_err().code, "internal");
     assert_eq!(session.config.packs, std::slice::from_ref(&pack));
@@ -612,14 +625,15 @@ fn failed_discard_keeps_the_library_entry() {
 #[test]
 fn set_folder_forgets_old_entries_keeps_files_and_scans_new_folder() {
     let dir = tempfile::tempdir().unwrap();
-    let old = dir.path().join("old");
-    let new = dir.path().join("new");
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let old = root.as_path().join("old");
+    let new = root.as_path().join("new");
     std::fs::create_dir(&old).unwrap();
     std::fs::create_dir(&new).unwrap();
     let a = folder_pack(&old, "a.inkdict");
     let b = folder_pack(&new, "b.inkdict");
-    let outside = folder_pack(dir.path(), "outside.inkdict");
-    let config_path = dir.path().join("config.json");
+    let outside = folder_pack(root.as_path(), "outside.inkdict");
+    let config_path = root.as_path().join("config.json");
     let (mut session, _) = Session::start(Some(config_path.clone()), None, Some(old.clone()));
     // Seed a legacy outside entry, which switching folders must preserve.
     session.config.packs.push(outside.clone());
@@ -632,7 +646,7 @@ fn set_folder_forgets_old_entries_keeps_files_and_scans_new_folder() {
     let before = session.dictionary().unwrap() as *const Dictionary;
     session.set_folder(new.clone()).unwrap();
     assert_eq!(session.dictionary().unwrap() as *const Dictionary, before);
-    for invalid in [a, dir.path().join("missing")] {
+    for invalid in [a, root.as_path().join("missing")] {
         assert_eq!(session.set_folder(invalid).unwrap_err().code, "bad_input");
         assert_eq!(session.folder(), Some(new.as_path()));
     }
@@ -661,10 +675,11 @@ fn set_folder_activates_a_new_pack_when_no_outside_pack_remains() {
 #[test]
 fn folder_membership_compares_canonical_parents() {
     let dir = tempfile::tempdir().unwrap();
-    let folder = dir.path().join("dictionaries");
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let folder = root.as_path().join("dictionaries");
     std::fs::create_dir(&folder).unwrap();
     let pack = folder_pack(&folder, "a.inkdict");
-    let alias = dir.path().join("alias");
+    let alias = root.as_path().join("alias");
     std::os::unix::fs::symlink(&folder, &alias).unwrap();
     let (mut session, error) = Session::start(None, Some(alias.join("a.inkdict")), Some(alias));
     assert!(error.is_none());
@@ -677,10 +692,11 @@ fn folder_membership_compares_canonical_parents() {
 #[test]
 fn old_config_without_folder_keeps_the_host_default() {
     let dir = tempfile::tempdir().unwrap();
-    let config_path = dir.path().join("config.json");
+    let root = dunce::canonicalize(dir.path()).unwrap();
+    let config_path = root.as_path().join("config.json");
     std::fs::write(&config_path, r#"{"packs":[],"active":null}"#).unwrap();
     assert!(Config::load(&config_path).folder.is_none());
-    let folder = dir.path().join("dictionaries");
+    let folder = root.as_path().join("dictionaries");
     let (session, error) = Session::start(Some(config_path.clone()), None, Some(folder.clone()));
     assert!(error.is_none());
     assert_eq!(session.library().folder, Some(folder));
