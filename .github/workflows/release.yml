@@ -47,8 +47,11 @@ jobs:
             args: ''
           - os: windows-latest
             args: ''
+          # One .dmg per architecture, each ad-hoc signed (tauri.conf.json).
           - os: macos-latest
-            args: '--target universal-apple-darwin'
+            args: '--target aarch64-apple-darwin'
+          - os: macos-latest
+            args: '--target x86_64-apple-darwin'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +60,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      - name: Both macOS architectures
+      - name: macOS target
         if: runner.os == 'macOS'
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2

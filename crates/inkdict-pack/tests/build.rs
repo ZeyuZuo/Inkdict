@@ -40,7 +40,10 @@ fn sample_words_and_raw_entry_bodies_round_trip() {
             entry
         );
     }
-    assert_eq!(report.meta["builder"], "inkdict-pack 0.1.0");
+    assert_eq!(
+        report.meta["builder"],
+        concat!("inkdict-pack ", env!("CARGO_PKG_VERSION"))
+    );
     assert!(report.meta["built_at"].ends_with("+00:00"));
     let db = rusqlite::Connection::open(&report.output).unwrap();
     for (pragma, expected) in [

@@ -33,11 +33,12 @@ Measured in the real WebKitGTK window (release build, from input to the updated 
 - Tests on the public sample dictionary, so they run anywhere.
 - Media stored in a pack shown by the desktop app.
 
-### After 0.1
+### Version 0.2
 
 - **Choosing a dictionary's theme**: when a pack carries several themes, the dictionary menu at the bottom of the sidebar (the book button in a narrow window) lists them under 词条样式; the choice is remembered per dictionary.
 - **Dictionary folder**: the desktop app reads every `.inkdict` file in one folder (by default `~/.local/share/win.zeyuz.inkdict/dictionaries` on Linux; it can be changed in the settings). Files put there appear when the app starts or its window is focused again; 添加词典… copies a file into the folder, and deleting a dictionary moves its file to the trash. Dictionaries added by path in 0.1 stay in the list.
 - The fold chevron of collapsible blocks shows in every theme (it used a colour token no theme defined).
+- macOS: one ad-hoc signed `.dmg` per architecture (0.1.0's unsigned universal app was reported as damaged on Apple silicon).
 
 ## Next
 

@@ -1850,7 +1850,7 @@ dependencies = [
 
 [[package]]
 name = "inkdict-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dunce",
  "inkdict-core",
@@ -1865,7 +1865,7 @@ dependencies = [
 
 [[package]]
 name = "inkdict-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1878,7 +1878,7 @@ dependencies = [
 
 [[package]]
 name = "inkdict-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "caseless",
  "fst",
@@ -1897,7 +1897,7 @@ dependencies = [
 
 [[package]]
 name = "inkdict-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "inkdict-app",
  "inkdict-core",
@@ -1911,7 +1911,7 @@ dependencies = [
 
 [[package]]
 name = "inkdict-html"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "inkdict-core",
  "inkdict-pack",
@@ -1920,7 +1920,7 @@ dependencies = [
 
 [[package]]
 name = "inkdict-pack"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "inkdict-core",
  "rusqlite",

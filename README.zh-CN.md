@@ -23,6 +23,7 @@ Inkdict 是一套开放的词典格式，以及一个读取这种格式的离线
 
 1. 从 [Releases](https://github.com/ZeyuZuo/Inkdict/releases) 下载对应系统的软件和 `inkdict` 工具，以及示例词典 `sample-en-zh.inkdict`。
 2. 把 `.inkdict` 文件放进软件的词典文件夹（Linux 上是 `~/.local/share/win.zeyuz.inkdict/dictionaries`，设置里能看到位置，也有按钮可以直接打开），或者点左栏底部的齿轮，选"添加词典…"选择文件，软件会把它复制到这个文件夹。
+   macOS 版没有经过 Apple 公证：第一次打开会被拦下，到"系统设置 → 隐私与安全性"里点"仍要打开"。
 3. 制作自己的词典：见 [docs/making-a-dictionary.md](docs/making-a-dictionary.md)。
 
 ## 从源码构建
