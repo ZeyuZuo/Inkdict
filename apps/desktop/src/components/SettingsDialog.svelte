@@ -5,16 +5,21 @@
   import { isTauri } from '../lib/api';
   import { shortPath, size } from '../lib/files';
   import Icon from './Icon.svelte';
-  let { library, pack, settings, theme, onadd, onaddpath, onremove, onmove, onuse, onsettings, onpacktheme, ontheme, onclose }: {
+  let { library, pack, settings, theme, adding, onadd, onaddpath, onremove, onmove, onuse, onfolder, onshowfolder, onsettings, ontheme, onclose }: {
     library: Library; pack: PackInfo | null; settings: Settings; theme: ThemeMode;
+    /** Files are being copied into the dictionary folder. */
+    adding: boolean;
     onadd: () => void; onaddpath: (path: string) => void; onremove: (path: string) => void;
     onmove: (path: string, index: number) => void; onuse: (path: string) => Promise<void>;
-    onsettings: (settings: Settings) => void; onpacktheme: (name: string) => void;
+    onfolder: () => void; onshowfolder: () => void;
+    onsettings: (settings: Settings) => void;
     ontheme: (mode: ThemeMode) => void; onclose: () => void;
   } = $props();
   let dialog: HTMLElement;
   let typed = $state('');
   let dragging = $state<string | null>(null);
+  /** Folder pack whose file is about to go to the trash, waiting for a second click. */
+  let deleting = $state<string | null>(null);
   /** Pack whose grip moved it with the keyboard: its grip gets focus back. */
   let moved: string | null = null;
   const scales = [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6];
@@ -28,7 +33,9 @@
   }
   function meta(item: Library['packs'][number]) {
     if (item.error) return item.error;
-    const parts = [item.entries !== null ? `${item.entries.toLocaleString('zh-CN')} 词条` : '', size(item.bytes), shortPath(item.path)];
+    // The folder is named above the list: its files need only their names.
+    const where = item.in_folder ? item.path.split(/[/\\]/).pop() ?? item.path : shortPath(item.path);
+    const parts = [item.entries !== null ? `${item.entries.toLocaleString('zh-CN')} 词条` : '', size(item.bytes), where];
     return parts.filter(Boolean).join('，');
   }
   // Reorder by dragging the grip; the row under the pointer takes its place.
@@ -78,6 +85,15 @@
 
     <section aria-labelledby="packs-title">
       <h3 id="packs-title">词典</h3>
+      {#if library.folder}
+        <div class="folder">
+          <span class="path" title={library.folder}>词典文件夹：{shortPath(library.folder)}</span>
+          {#if isTauri()}
+            <button onclick={onshowfolder}>打开</button>
+            <button onclick={onfolder}>更改…</button>
+          {/if}
+        </div>
+      {/if}
       {#each library.packs as item, index (item.path)}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="pack" class:dragging={dragging === item.path}
@@ -91,12 +107,23 @@
             <div class="name">{item.title ?? shortPath(item.path)}</div>
             <div class="meta" class:bad={item.error !== null} title={item.path}>{meta(item)}</div>
           </div>
-          <button class="remove" onclick={() => onremove(item.path)}>移除</button>
+          <!-- A file in the dictionary folder would come back on the next scan, so it goes to the trash. -->
+          {#if !item.in_folder}
+            <button class="remove" title="只从列表移除，不删除文件" onclick={() => onremove(item.path)}>移除</button>
+          {:else if deleting === item.path}
+            <span class="actions">
+              <button class="remove danger" onclick={() => { deleting = null; onremove(item.path); }}>移到回收站</button>
+              <button class="remove" onclick={() => { deleting = null; }}>取消</button>
+            </span>
+          {:else}
+            <button class="remove" onclick={() => { deleting = item.path; }}>删除</button>
+          {/if}
         </div>
       {/each}
       <div class="add">
         {#if isTauri()}
-          <button class="button" onclick={onadd}>添加词典…</button><span class="hint">可以一次选择多个 .inkdict 文件</span>
+          <button class="button" disabled={adding} onclick={onadd}>{adding ? '正在复制…' : '添加词典…'}</button>
+          <span class="hint">{library.folder ? '文件会复制到词典文件夹；也可以直接把 .inkdict 文件放进去' : '可以一次选择多个 .inkdict 文件'}</span>
         {:else}
           <!-- In a browser there is no file dialog: type the path the bridge can open. -->
           <input bind:value={typed} placeholder="词典文件路径（.inkdict）" aria-label="词典文件路径"
@@ -105,20 +132,6 @@
         {/if}
       </div>
     </section>
-
-    <!-- The open dictionary's own themes (spec/v1.md §4); one theme needs no choice. -->
-    {#if pack && pack.themes.length > 1}
-      <section aria-labelledby="style-title">
-        <h3 id="style-title">词条样式</h3>
-        <div class="segments" role="radiogroup" aria-labelledby="style-title"
-          style:grid-template-columns={`repeat(${pack.themes.length}, minmax(0, 1fr))`}
-          style:width={`min(${pack.themes.length * 90}px, 100%)`}>
-          {#each pack.themes as item (item.name)}
-            <button role="radio" aria-checked={pack.theme === item.name} onclick={() => onpacktheme(item.name)}>{item.title}</button>
-          {/each}
-        </div>
-      </section>
-    {/if}
 
     <section aria-labelledby="display-title">
       <h3 id="display-title">显示</h3>

@@ -5,14 +5,15 @@ import { renderMock, rows, words } from './mock-data';
 import { themeCss } from './mock-theme';
 
 let settings: Settings = { hide_pronunciation: false, hide_examples: false, font_scale: 1 };
-const path = '/demo/invented.inkdict';
+const folder = '/home/user/.local/share/win.zeyuz.inkdict/dictionaries';
+const path = `${folder}/invented.inkdict`;
 const info: PackInfo = {
   id: 'invented-demo', title: '小小造词集', entries: words.length, source_lang: 'en', target_langs: ['zh-Hans'],
   switches: { pronunciation: true, example: true },
   theme: 'default',
   themes: [{ name: 'default', title: 'Default' }, { name: 'plain', title: 'Plain' }],
 };
-let library: Library = { active: path, packs: [{ path, title: info.title, entries: words.length, bytes: 12_288, error: null }] };
+let library: Library = { folder, active: path, packs: [{ path, in_folder: true, title: info.title, entries: words.length, bytes: 12_288, error: null }] };
 const norm = (text: string) => text.trim().toLocaleLowerCase();
 const fail = (code: 'bad_input' | 'not_found' | 'no_pack', message: string): never => { throw { code, message }; };
 const open = () => (library.active ? info : fail('no_pack', 'no dictionary pack is open'));
@@ -41,9 +42,16 @@ function follow(current: string, link: Link): Commands['follow'][1] {
 const handlers: { [K in keyof Commands]: (args: Commands[K][0]) => Commands[K][1] } = {
   pack_info: () => ({ ...open() }),
   library: () => structuredClone(library),
+  rescan: () => structuredClone(library),
+  set_folder: ({ path: folder }) => {
+    if (!folder.startsWith('/')) fail('bad_input', 'dictionary folder must be an absolute path');
+    if (folder !== library.folder) library = { folder, active: null, packs: [] };
+    return structuredClone(library);
+  },
+  show_folder: () => {},
   add_packs: ({ paths }) => ({ library: structuredClone(library), rejected: paths.map(p => ({ path: p, message: '演示模式不能添加词典' })) }),
   remove_pack: ({ path: removed }) => {
-    library = { active: library.active === removed ? null : library.active, packs: library.packs.filter(p => p.path !== removed) };
+    library = { ...library, active: library.active === removed ? null : library.active, packs: library.packs.filter(p => p.path !== removed) };
     return structuredClone(library);
   },
   move_pack: () => structuredClone(library),

@@ -31,6 +31,9 @@ async function command<K extends keyof Commands>(name: K, args: Commands[K][0]):
 export const api = {
   packInfo: () => command('pack_info', undefined),
   library: () => command('library', undefined),
+  rescan: () => command('rescan', undefined),
+  setFolder: (path: string) => command('set_folder', { path }),
+  showFolder: () => command('show_folder', undefined),
   addPacks: (paths: string[]) => command('add_packs', { paths }),
   removePack: (path: string) => command('remove_pack', { path }),
   movePack: (path: string, index: number) => command('move_pack', { path, index }),

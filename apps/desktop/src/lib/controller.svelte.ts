@@ -35,7 +35,9 @@ export class Dictionary {
   loading = $state(false);
   error = $state('');
   pack = $state<PackInfo | null>(null);
-  library = $state<Library>({ active: null, packs: [] });
+  library = $state<Library>({ folder: null, active: null, packs: [] });
+  /** Packs being copied into the dictionary folder. */
+  adding = $state(false);
   current = $state<Entry | null>(null);
   position = $state<EntryPosition>({ kind: 'top' });
   /** Headword of the entry whose link led to the current one. */
@@ -298,6 +300,7 @@ export class Dictionary {
   }
 
   async addPacks(paths: string[]) {
+    this.adding = true;
     try {
       const had = this.library.active;
       const added = await api.addPacks(paths);
@@ -306,7 +309,27 @@ export class Dictionary {
         this.error = added.rejected.map(item => `${item.path}：${item.message}`).join('\n');
       }
       if (added.library.active !== had) await this.switched();
-    } catch (error) { this.report(error); }
+    } catch (error) { this.report(error); } finally { this.adding = false; }
+  }
+
+  /** Pick up files put into or taken out of the dictionary folder. */
+  async rescan() {
+    if (this.adding || this.switching) return;
+    try { await this.changed(await api.rescan()); } catch (error) { this.report(error); }
+  }
+
+  async setFolder(path: string) {
+    try { await this.changed(await api.setFolder(path)); } catch (error) { this.report(error); }
+  }
+
+  async showFolder() {
+    try { await api.showFolder(); } catch (error) { this.report(error); }
+  }
+
+  private async changed(library: Library) {
+    const had = this.library.active;
+    this.library = library;
+    if (library.active !== had) await this.switched();
   }
 
   async removePack(path: string) {

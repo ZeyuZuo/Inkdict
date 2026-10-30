@@ -55,6 +55,7 @@ export interface Settings {
 }
 
 export interface LibraryItem {
+  in_folder: boolean;
   path: string;
   title: string | null;
   entries: number | null;
@@ -62,7 +63,7 @@ export interface LibraryItem {
   /** Why the file cannot be opened. */
   error: string | null;
 }
-export interface Library { active: string | null; packs: LibraryItem[] }
+export interface Library { folder: string | null; active: string | null; packs: LibraryItem[] }
 export interface Added { library: Library; rejected: { path: string; message: string }[] }
 
 export interface ApiError {
@@ -73,6 +74,9 @@ export interface ApiError {
 export interface Commands {
   pack_info: [undefined, PackInfo];
   library: [undefined, Library];
+  rescan: [undefined, Library];
+  set_folder: [{ path: string }, Library];
+  show_folder: [undefined, void];
   add_packs: [{ paths: string[] }, Added];
   remove_pack: [{ path: string }, Library];
   move_pack: [{ path: string; index: number }, Library];

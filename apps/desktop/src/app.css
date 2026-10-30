@@ -113,6 +113,9 @@ button:disabled { opacity: .4; cursor: default; }
 .menu .check { width: 14px; color: var(--accent); flex: none; }
 .menu .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu hr { border: 0; border-top: 1px solid var(--rule); margin: 4px 2px; }
+.menu .label { padding: 6px 10px 2px 32px; font-size: 12px; color: var(--muted); }
+/* Narrow window: the menu hangs from the top bar's right edge. */
+.menu.down { top: calc(100% + 4px); bottom: auto; left: auto; right: 8px; max-height: calc(100dvh - 72px); overflow-y: auto; }
 
 /* ---------- entry ---------- */
 
@@ -165,6 +168,13 @@ button:disabled { opacity: .4; cursor: default; }
 :root[data-theme="dark"] .pack .meta.bad { color: #ff8a80; }
 .pack .remove { font-size: 13px; color: var(--muted); padding: 4px 6px; border-radius: 5px; }
 .pack .remove:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.pack .actions { display: flex; align-items: center; gap: 2px; }
+.pack .remove.danger { color: #b42318; }
+:root[data-theme="dark"] .pack .remove.danger { color: #ff8a80; }
+.folder { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 12.5px; color: var(--muted); min-width: 0; }
+.folder .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder button { font-size: 13px; color: var(--soft); padding: 4px 6px; border-radius: 5px; flex: none; }
+.folder button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .add { margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .add .hint { font-size: 12.5px; color: var(--muted); }
 .add input { flex: 1; min-width: 200px; height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--raised); padding: 0 10px; font-size: 13px; }

@@ -10,6 +10,14 @@ export async function pickPacks(): Promise<string[]> {
   return Array.isArray(chosen) ? chosen : [chosen];
 }
 
+/** Choose a directory with the system dialog; null when cancelled or in a browser. */
+export async function pickFolder(): Promise<string | null> {
+  if (!isTauri()) return null;
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  const chosen = await open({ directory: true, multiple: false });
+  return typeof chosen === 'string' ? chosen : null;
+}
+
 export function size(bytes: number | null): string {
   if (bytes === null) return '';
   if (bytes >= 1 << 30) return `${(bytes / (1 << 30)).toFixed(1)} GB`;

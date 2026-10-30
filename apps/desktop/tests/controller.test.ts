@@ -57,3 +57,34 @@ describe('pack theme selection with the browser mock', () => {
     expect(installTheme).not.toHaveBeenCalled();
   });
 });
+
+describe('dictionary folder with the browser mock', () => {
+  it('rescans without restarting when the open pack is still there', async () => {
+    const dictionary = new Dictionary();
+    dictionary.pack = await api.packInfo();
+    await dictionary.refreshLibrary();
+    await dictionary.open('moonjar');
+    const current = dictionary.current;
+
+    await dictionary.rescan();
+
+    expect(dictionary.library.folder).toMatch(/dictionaries$/);
+    expect(dictionary.library.packs.every(item => item.in_folder)).toBe(true);
+    expect(dictionary.current).toBe(current);
+    expect(dictionary.error).toBe('');
+  });
+
+  // Last: the mock's library stays empty afterwards.
+  it('starts over when another folder leaves no pack open', async () => {
+    const dictionary = new Dictionary();
+    dictionary.pack = await api.packInfo();
+    await dictionary.refreshLibrary();
+    await dictionary.open('moonjar');
+
+    await dictionary.setFolder('/elsewhere');
+
+    expect(dictionary.library).toEqual({ folder: '/elsewhere', active: null, packs: [] });
+    expect(dictionary.pack).toBeNull();
+    expect(dictionary.current).toBeNull();
+  });
+});

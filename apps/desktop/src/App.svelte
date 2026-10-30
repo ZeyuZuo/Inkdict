@@ -3,7 +3,7 @@
   import { Dictionary } from './lib/controller.svelte';
   import { isTauri } from './lib/api';
   import { runBench } from './lib/bench';
-  import { pickPacks } from './lib/files';
+  import { pickFolder, pickPacks } from './lib/files';
   import SearchField from './components/SearchField.svelte';
   import WordList from './components/WordList.svelte';
   import EntryPane from './components/EntryPane.svelte';
@@ -87,10 +87,15 @@
     const paths = await pickPacks();
     if (paths.length) await dictionary.addPacks(paths);
   }
+  async function changeFolder() {
+    const path = await pickFolder();
+    if (path) await dictionary.setFolder(path);
+  }
   function closeSettings() { dictionary.showSettings = false; search.focus(); }
 </script>
 
-<svelte:window onkeydown={globalKey} onmousedown={event => { mouseNavigation(event); outside(event); }}
+<!-- Back in the window: dictionaries may have been put into or taken out of the folder. -->
+<svelte:window onkeydown={globalKey} onfocus={() => void dictionary.rescan()} onmousedown={event => { mouseNavigation(event); outside(event); }}
   onmouseup={preventMouseHistory} onauxclick={preventMouseHistory} />
 
 {#snippet field()}
@@ -98,6 +103,11 @@
     oninput={(text, started) => void dictionary.lookup(text, started)} onkeydown={searchKey}
     onclear={() => void dictionary.lookup('')}
     onfocus={() => { if (dictionary.narrow && dictionary.words.length) dictionary.listOpen = true; }} />
+{/snippet}
+{#snippet packMenu(compact: boolean)}
+  <PackMenu library={dictionary.library} pack={dictionary.pack} {compact}
+    onuse={path => void dictionary.usePack(path)} onpacktheme={name => void dictionary.setPackTheme(name)}
+    onmanage={() => { dictionary.showSettings = true; }} />
 {/snippet}
 {#snippet list()}
   <WordList words={dictionary.words} searched={dictionary.searched} selection={dictionary.selection}
@@ -112,6 +122,7 @@
         <button class="icon-button" class:on={dictionary.pinned} aria-pressed={dictionary.pinned}
           aria-label="固定在最前" title="固定在最前" onclick={() => void dictionary.togglePin()}><Icon name="pin" /></button>
       {/if}
+      {@render packMenu(true)}
       <button class="icon-button" aria-label="设置" title="设置" onclick={() => { dictionary.showSettings = true; }}><Icon name="gear" size={18} /></button>
       {#if dictionary.listOpen && dictionary.searched.trim()}<div class="drop">{@render list()}</div>{/if}
     </div>
@@ -120,8 +131,7 @@
       {@render field()}
       {@render list()}
       <div class="foot">
-        <PackMenu library={dictionary.library} title={dictionary.pack?.title ?? ''}
-          onuse={path => void dictionary.usePack(path)} onmanage={() => { dictionary.showSettings = true; }} />
+        {@render packMenu(false)}
         <button class="icon-button" aria-label="设置" title="设置" onclick={() => { dictionary.showSettings = true; }}><Icon name="gear" size={18} /></button>
       </div>
     </aside>
@@ -136,10 +146,10 @@
 
 {#if dictionary.showSettings}
   <SettingsDialog library={dictionary.library} pack={dictionary.pack} settings={dictionary.settings} theme={dictionary.theme}
-    onadd={() => void add()} onaddpath={path => void dictionary.addPacks([path])}
+    adding={dictionary.adding} onadd={() => void add()} onaddpath={path => void dictionary.addPacks([path])}
     onremove={path => void dictionary.removePack(path)} onmove={(path, index) => void dictionary.movePack(path, index)}
-    onuse={path => dictionary.usePack(path)} onsettings={settings => void dictionary.updateSettings(settings)}
-    onpacktheme={name => void dictionary.setPackTheme(name)} ontheme={mode => dictionary.setTheme(mode)} onclose={closeSettings} />
+    onuse={path => dictionary.usePack(path)} onfolder={() => void changeFolder()} onshowfolder={() => void dictionary.showFolder()}
+    onsettings={settings => void dictionary.updateSettings(settings)} ontheme={mode => dictionary.setTheme(mode)} onclose={closeSettings} />
 {/if}
 
 {#if dictionary.error}
