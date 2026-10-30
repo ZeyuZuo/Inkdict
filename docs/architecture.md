@@ -54,7 +54,7 @@ How an entry looks is decided entirely by theme files (TOML, `spec/v1.md` §4). 
 
 | Layer | Source | Status |
 | --- | --- | --- |
-| The dictionary's theme | `themes/<name>.toml` inside the pack; a pack may carry several | Used by the desktop app; when a pack has several, the settings choose one, remembered per dictionary |
+| The dictionary's theme | `themes/<name>.toml` inside the pack; a pack may carry several | Used by the desktop app; when a pack has several, the dictionary menu chooses one, remembered per dictionary |
 | A user theme | A TOML file of the user's | Supported by the core and by `inkdict render --overlay`; not yet in the desktop app |
 | Settings | An overlay generated from the app's switches | Hides pronunciations / examples by role; text size is set by the app |
 

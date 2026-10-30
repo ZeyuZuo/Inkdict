@@ -22,7 +22,7 @@ Inkdict ships no dictionary content of its own apart from the small sample. You 
 ## Getting started
 
 1. Download the app and the `inkdict` tool for your system from the [releases page](https://github.com/ZeyuZuo/Inkdict/releases), together with `sample-en-zh.inkdict`.
-2. Open the app, click the gear icon at the bottom of the sidebar, choose **添加词典…** (Add dictionary) and pick the `.inkdict` file. (The app's interface is in Chinese for now; an English interface is planned.)
+2. Put the `.inkdict` file into the app's dictionary folder (on Linux `~/.local/share/win.zeyuz.inkdict/dictionaries`; the settings show it and have a button to open it), or click the gear icon at the bottom of the sidebar, choose **添加词典…** (Add dictionary) and pick the file, which copies it there. (The app's interface is in Chinese for now; an English interface is planned.)
 3. To make a dictionary of your own, follow [docs/making-a-dictionary.md](docs/making-a-dictionary.md).
 
 ## Building from source
