@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use tiny_http::{Header, Method, Response, Server};
 
 pub fn run(path: &Path, port: u16) -> Result<()> {
-    let (mut session, error) = Session::start(None, Some(path.to_owned()));
+    let (mut session, error) = Session::start(None, Some(path.to_owned()), None);
     session.set_resource_base(format!("http://127.0.0.1:{port}/resource/"));
     if let Some(error) = error {
         eprintln!("inkdict: {error}");
@@ -90,6 +90,8 @@ fn call(session: &mut Session, name: &str, args: &Value) -> Result<Value, AppErr
     match name {
         "pack_info" => to_json(serde_json::to_value(dictionary(session)?.info())),
         "library" => to_json(serde_json::to_value(session.library())),
+        "rescan" => to_json(serde_json::to_value(session.rescan()?)),
+        "set_folder" => to_json(serde_json::to_value(session.set_folder(path()?)?)),
         "add_packs" => {
             let paths = serde_json::from_value(args["paths"].clone())
                 .map_err(|err| AppError::new("bad_input", err.to_string()))?;

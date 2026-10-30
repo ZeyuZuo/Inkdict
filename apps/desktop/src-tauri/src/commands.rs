@@ -1,12 +1,14 @@
 //! One function per command of apps/desktop/README.md, over the shared session.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use inkdict_app::{
     Added, AppError, Dictionary, EntryView, Library, PackInfo, Result, Settings, Target, WordView,
 };
 use inkdict_core::Link;
 use tauri::State;
+use tauri_plugin_opener::OpenerExt;
 
 use crate::AppState;
 
@@ -31,16 +33,61 @@ pub fn library(state: State<'_, AppState>) -> Library {
 }
 
 #[tauri::command]
-pub fn add_packs(state: State<'_, AppState>, paths: Vec<PathBuf>) -> Result<Added> {
+pub async fn add_packs(state: State<'_, AppState>, paths: Vec<PathBuf>) -> Result<Added> {
+    let shared = Arc::clone(&state.session);
+    let (result, opened) = tauri::async_runtime::spawn_blocking(move || {
+        let mut session = shared.write().unwrap_or_else(|e| e.into_inner());
+        let had_dictionary = session.dictionary().is_some();
+        let result = session.add_packs(paths);
+        let opened = !had_dictionary && session.dictionary().is_some();
+        (result, opened)
+    })
+    .await
+    .map_err(|error| AppError::new("internal", error.to_string()))?;
+    if opened {
+        state.warm_up();
+    }
+    result
+}
+
+#[tauri::command]
+pub fn rescan(state: State<'_, AppState>) -> Result<Library> {
     let mut session = state.session.write().unwrap_or_else(|e| e.into_inner());
-    let had_dictionary = session.dictionary().is_some();
-    let result = session.add_packs(paths);
-    let opened = !had_dictionary && session.dictionary().is_some();
+    let active = session.library().active;
+    let result = session.rescan();
+    let opened = session.dictionary().is_some() && session.library().active != active;
     drop(session);
     if opened {
         state.warm_up();
     }
     result
+}
+
+#[tauri::command]
+pub fn set_folder(state: State<'_, AppState>, path: PathBuf) -> Result<Library> {
+    let mut session = state.session.write().unwrap_or_else(|e| e.into_inner());
+    let active = session.library().active;
+    let result = session.set_folder(path);
+    let opened = session.dictionary().is_some() && session.library().active != active;
+    drop(session);
+    if opened {
+        state.warm_up();
+    }
+    result
+}
+
+#[tauri::command]
+pub fn show_folder(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<()> {
+    let folder = state
+        .session
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .folder()
+        .map(PathBuf::from)
+        .ok_or_else(|| AppError::new("bad_input", "no dictionary folder is configured"))?;
+    app.opener()
+        .open_path(folder.to_string_lossy(), None::<&str>)
+        .map_err(|error| AppError::new("internal", error.to_string()))
 }
 
 #[tauri::command]

@@ -58,9 +58,12 @@ fn pack_path() -> Option<PathBuf> {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("config.json");
-            let (mut session, error) = Session::start(Some(config_path), pack_path());
+            let default_folder = app.path().app_data_dir()?.join("dictionaries");
+            let (mut session, error) =
+                Session::start(Some(config_path), pack_path(), Some(default_folder));
             session.set_resource_base(RESOURCE_BASE);
             if let Some(error) = error {
                 eprintln!("inkdict: {error}");
@@ -92,6 +95,9 @@ fn main() {
             commands::pack_info,
             commands::library,
             commands::add_packs,
+            commands::rescan,
+            commands::set_folder,
+            commands::show_folder,
             commands::remove_pack,
             commands::move_pack,
             commands::use_pack,

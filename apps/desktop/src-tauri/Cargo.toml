@@ -15,5 +15,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
 inkdict-app = { path = "../../../crates/inkdict-app" }
 inkdict-core = { path = "../../../crates/inkdict-core" }

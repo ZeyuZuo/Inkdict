@@ -74,6 +74,7 @@ fn config_round_trips_and_tolerates_broken_files() {
     let path = dir.path().join("inkdict/config.json");
     assert_eq!(Config::load(&path), Config::default());
     let config = Config {
+        folder: Some("/data/dictionaries".into()),
         themes: [("oalecd10".into(), "classic".into())].into(),
         packs: vec!["/data/oalecd10.inkdict".into()],
         active: Some("/data/oalecd10.inkdict".into()),
@@ -361,8 +362,11 @@ fn sample_settings_hide_pronunciation_and_examples_independently() {
 #[test]
 fn sample_resources_are_served_by_path_and_tried_first() {
     let dir = tempfile::tempdir().unwrap();
-    let (mut session, error) =
-        Session::start(Some(dir.path().join("config.json")), Some(sample_pack()));
+    let (mut session, error) = Session::start(
+        Some(dir.path().join("config.json")),
+        Some(sample_pack()),
+        None,
+    );
     assert!(error.is_none());
     session.set_resource_base("inkdict-res://localhost/");
     let dictionary = session.dictionary().unwrap();

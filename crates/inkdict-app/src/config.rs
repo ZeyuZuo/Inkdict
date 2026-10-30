@@ -11,6 +11,7 @@ use crate::{AppError, Result, Settings};
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(from = "SavedConfig")]
 pub struct Config {
+    pub folder: Option<PathBuf>,
     pub packs: Vec<PathBuf>,
     pub active: Option<PathBuf>,
     pub settings: Settings,
@@ -20,6 +21,7 @@ pub struct Config {
 #[derive(Default, Deserialize)]
 #[serde(default)]
 struct SavedConfig {
+    folder: Option<PathBuf>,
     packs: Option<Vec<PathBuf>>,
     active: Option<PathBuf>,
     pack: Option<PathBuf>,
@@ -35,6 +37,7 @@ impl From<SavedConfig> for Config {
         };
         let active = active.filter(|path| packs.contains(path));
         Self {
+            folder: saved.folder,
             packs,
             active,
             settings: saved.settings,

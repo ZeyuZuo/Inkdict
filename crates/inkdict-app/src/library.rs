@@ -1,6 +1,7 @@
 //! The dictionary library and the open dictionary shared by app commands.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use inkdict_core::Pack;
 use serde::Serialize;
@@ -10,6 +11,7 @@ use crate::{AppError, Config, Dictionary, PackInfo, Result, Settings};
 #[derive(Debug, Serialize)]
 pub struct LibraryItem {
     pub path: PathBuf,
+    pub in_folder: bool,
     pub title: Option<String>,
     pub entries: Option<u64>,
     pub bytes: Option<u64>,
@@ -18,6 +20,7 @@ pub struct LibraryItem {
 
 #[derive(Debug, Serialize)]
 pub struct Library {
+    pub folder: Option<PathBuf>,
     pub active: Option<PathBuf>,
     pub packs: Vec<LibraryItem>,
 }
@@ -38,6 +41,7 @@ pub struct Added {
 pub struct Session {
     config_path: Option<PathBuf>,
     config: Config,
+    folder: Option<PathBuf>,
     dictionary: Option<Dictionary>,
     resource_base: Option<String>,
 }
@@ -45,10 +49,15 @@ pub struct Session {
 impl Session {
     /// Load configuration and try to open the active pack. A command-line
     /// pack takes precedence, even when it can no longer be opened.
-    pub fn start(config_path: Option<PathBuf>, pack: Option<PathBuf>) -> (Self, Option<AppError>) {
+    pub fn start(
+        config_path: Option<PathBuf>,
+        pack: Option<PathBuf>,
+        default_folder: Option<PathBuf>,
+    ) -> (Self, Option<AppError>) {
         let config = config_path.as_deref().map(Config::load).unwrap_or_default();
         let mut session = Self {
             config_path,
+            folder: config.folder.clone().or(default_folder),
             config,
             dictionary: None,
             resource_base: None,
@@ -64,6 +73,7 @@ impl Session {
             };
             session.config.active = Some(path);
         }
+        let folder_error = session.prepare_folder().and_then(|()| session.scan()).err();
         let active = session.config.active.clone();
         let error = active
             .as_deref()
@@ -74,8 +84,141 @@ impl Session {
                 }
                 Err(error) => Some(error),
             });
+        if session.folder.is_some() && session.config.active.is_none() {
+            session.select_first();
+        }
         let save_error = session.save().err();
-        (session, error.or(save_error))
+        (session, folder_error.or(error).or(save_error))
+    }
+
+    fn prepare_folder(&mut self) -> Result<()> {
+        if let Some(folder) = &self.folder {
+            std::fs::create_dir_all(folder).map_err(|error| {
+                AppError::new(
+                    "internal",
+                    format!("creating {}: {error}", folder.display()),
+                )
+            })?;
+            self.folder = Some(dunce::canonicalize(folder).map_err(|error| {
+                AppError::new("internal", format!("opening {}: {error}", folder.display()))
+            })?);
+        }
+        Ok(())
+    }
+
+    /// The effective dictionary folder, if the host supplies one.
+    pub fn folder(&self) -> Option<&Path> {
+        self.folder.as_deref()
+    }
+
+    /// Reconcile folder files without reopening an existing active dictionary.
+    pub fn rescan(&mut self) -> Result<Library> {
+        let packs = self.config.packs.clone();
+        let active = self.config.active.clone();
+        self.scan()?;
+        if self.folder.is_some() && self.config.active.is_none() {
+            self.select_first();
+        }
+        if packs != self.config.packs || active != self.config.active {
+            self.save()?;
+        }
+        Ok(self.library())
+    }
+
+    fn scan(&mut self) -> Result<()> {
+        let Some(folder) = &self.folder else {
+            return Ok(());
+        };
+        let fail = |error| {
+            AppError::new(
+                "internal",
+                format!("scanning {}: {error}", folder.display()),
+            )
+        };
+        let mut found = Vec::new();
+        for entry in std::fs::read_dir(folder).map_err(fail)? {
+            let entry = entry.map_err(fail)?;
+            let path = entry.path();
+            if entry.file_name().to_string_lossy().starts_with('.')
+                || !path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("inkdict"))
+            {
+                continue;
+            }
+            let meta = entry.metadata().map_err(fail)?;
+            if !meta.is_file()
+                || SystemTime::now()
+                    .duration_since(meta.modified().map_err(fail)?)
+                    .unwrap_or_default()
+                    < Duration::from_secs(2)
+            {
+                continue;
+            }
+            found.push((entry.file_name(), dunce::canonicalize(&path).map_err(fail)?));
+        }
+        found.sort_by(|a, b| a.0.cmp(&b.0));
+        self.config
+            .packs
+            .retain(|path| !inside(path, folder) || path.exists());
+        if self
+            .config
+            .active
+            .as_ref()
+            .is_some_and(|path| !self.config.packs.contains(path))
+        {
+            self.config.active = None;
+            self.dictionary = None;
+        }
+        for (_, path) in found {
+            if self.position(&path).is_err() {
+                self.config.packs.push(path);
+            }
+        }
+        Ok(())
+    }
+
+    /// Use an existing directory, leaving the old folder's files in place.
+    pub fn set_folder(&mut self, path: PathBuf) -> Result<Library> {
+        if !path.is_dir() {
+            return Err(AppError::new(
+                "bad_input",
+                "dictionary folder must be an existing directory",
+            ));
+        }
+        let folder = dunce::canonicalize(&path)
+            .map_err(|error| AppError::new("bad_input", format!("{}: {error}", path.display())))?;
+        if self.folder.as_ref() != Some(&folder)
+            && let Some(old) = &self.folder
+        {
+            self.config.packs.retain(|path| !inside(path, old));
+            if self
+                .config
+                .active
+                .as_ref()
+                .is_some_and(|path| !self.config.packs.contains(path))
+            {
+                self.config.active = None;
+                self.dictionary = None;
+            }
+        }
+        self.config.folder = Some(folder.clone());
+        self.folder = Some(folder);
+        let library = self.rescan()?;
+        self.save()?;
+        Ok(library)
+    }
+
+    fn select_first(&mut self) {
+        let opened = self.config.packs.iter().find_map(|path| {
+            self.open_dictionary(path)
+                .ok()
+                .map(|dictionary| (path.clone(), dictionary))
+        });
+        if let Some((path, dictionary)) = opened {
+            self.install(dictionary);
+            self.config.active = Some(path);
+        }
     }
 
     /// Where the host serves the files packs store themselves, e.g.
@@ -106,6 +249,7 @@ impl Session {
 
     pub fn library(&self) -> Library {
         Library {
+            folder: self.folder.clone(),
             active: self.config.active.clone(),
             packs: self
                 .config
@@ -123,6 +267,10 @@ impl Session {
                     };
                     LibraryItem {
                         path: path.clone(),
+                        in_folder: self
+                            .folder
+                            .as_ref()
+                            .is_some_and(|folder| inside(path, folder)),
                         title,
                         entries,
                         bytes,
@@ -133,8 +281,7 @@ impl Session {
         }
     }
 
-    /// Append valid packs, rejecting duplicates by canonical path as well
-    /// as files that cannot be opened with the current settings.
+    /// Import valid packs into the folder, or append their paths without one.
     pub fn add_packs(&mut self, paths: Vec<PathBuf>) -> Result<Added> {
         let mut rejected = Vec::new();
         for path in paths {
@@ -146,6 +293,14 @@ impl Session {
                     return Err(AppError::new("bad_input", "pack is already in the library"));
                 }
                 let dictionary = self.open_dictionary(&canonical)?;
+                if let Some(folder) = &self.folder
+                    && !inside(&canonical, folder)
+                {
+                    let destination = copy_into(&canonical, folder)?;
+                    drop(dictionary);
+                    let dictionary = self.open_dictionary(&destination)?;
+                    return Ok((destination, dictionary));
+                }
                 Ok((canonical, dictionary))
             };
             match add() {
@@ -169,23 +324,34 @@ impl Session {
         })
     }
 
-    /// Remove only the library reference, selecting the first remaining
-    /// pack that can be opened when the active reference is removed.
+    /// Trash folder files, or forget outside paths, selecting the next usable pack.
     pub fn remove_pack(&mut self, path: &Path) -> Result<Library> {
         let index = self.position(path)?;
-        let removed = self.config.packs.remove(index);
+        let removed = self.config.packs[index].clone();
+        if self
+            .folder
+            .as_ref()
+            .is_some_and(|folder| inside(&removed, folder))
+        {
+            let active = self.config.active.as_ref() == Some(&removed);
+            if active {
+                self.dictionary = None;
+            }
+            if let Err(error) = discard(&removed) {
+                if active && let Ok(dictionary) = self.open_dictionary(&removed) {
+                    self.install(dictionary);
+                }
+                return Err(AppError::new(
+                    "internal",
+                    format!("trashing {}: {error}", removed.display()),
+                ));
+            }
+        }
+        self.config.packs.remove(index);
         if self.config.active.as_ref() == Some(&removed) {
             self.dictionary = None;
             self.config.active = None;
-            let opened = self.config.packs.iter().find_map(|path| {
-                self.open_dictionary(path)
-                    .ok()
-                    .map(|dictionary| (path.clone(), dictionary))
-            });
-            if let Some((path, dictionary)) = opened {
-                self.install(dictionary);
-                self.config.active = Some(path);
-            }
+            self.select_first();
         }
         self.save()?;
         Ok(self.library())
@@ -264,6 +430,65 @@ impl Session {
 
 fn canonical_or_original(path: &Path) -> PathBuf {
     dunce::canonicalize(path).unwrap_or_else(|_| path.to_owned())
+}
+
+fn inside(path: &Path, folder: &Path) -> bool {
+    canonical_or_original(path)
+        .parent()
+        .is_some_and(|parent| canonical_or_original(parent) == canonical_or_original(folder))
+}
+
+fn copy_into(source: &Path, folder: &Path) -> Result<PathBuf> {
+    let name = source
+        .file_name()
+        .ok_or_else(|| AppError::new("bad_input", "pack has no file name"))?;
+    let destination = folder.join(name);
+    let clash = || {
+        AppError::new(
+            "bad_input",
+            format!(
+                "a file named {} is already in the dictionary folder",
+                name.to_string_lossy()
+            ),
+        )
+    };
+    if destination.symlink_metadata().is_ok() {
+        return Err(clash());
+    }
+    let mut temporary_name = std::ffi::OsString::from(".");
+    temporary_name.push(name);
+    temporary_name.push(".part");
+    let temporary = folder.join(temporary_name);
+    let fail = |error| AppError::new("internal", format!("copying {}: {error}", source.display()));
+    let mut output = std::fs::File::options()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(fail)?;
+    let copy = || -> Result<()> {
+        let mut input = std::fs::File::open(source).map_err(fail)?;
+        std::io::copy(&mut input, &mut output).map_err(fail)?;
+        drop(output);
+        if destination.symlink_metadata().is_ok() {
+            return Err(clash());
+        }
+        std::fs::rename(&temporary, &destination).map_err(fail)
+    };
+    if let Err(error) = copy() {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error);
+    }
+    dunce::canonicalize(&destination).map_err(fail)
+}
+
+#[cfg(not(test))]
+fn discard(path: &Path) -> std::result::Result<(), trash::Error> {
+    trash::delete(path)
+}
+
+#[cfg(test)]
+fn discard(path: &Path) -> std::io::Result<()> {
+    std::fs::remove_file(path)
 }
 
 #[cfg(test)]
